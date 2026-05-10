@@ -15,7 +15,9 @@
       "Bash(firebase apphosting:backends:deploy --help)",
       "Bash(firebase apphosting *)",
       "Bash(firebase --help)",
-      "Bash(firebase apphosting:rollouts:create --help)"
+      "Bash(firebase apphosting:rollouts:create --help)",
+      "Bash(git init *)",
+      "Bash(git add *)"
     ]
   }
 }
