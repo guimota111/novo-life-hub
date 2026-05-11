@@ -6,7 +6,8 @@ import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import {
-  doc, setDoc, increment as fsIncrement, onSnapshot, getDoc,
+  collection, doc, setDoc, increment as fsIncrement, onSnapshot, getDoc, getDocs,
+  query, where, documentId,
 } from 'firebase/firestore';
 import {
   Droplet, Footprints, BookOpen, Dumbbell, Pill, GraduationCap,
@@ -155,6 +156,19 @@ export default function Page() {
     return result;
   }, [user]);
 
+  // Range query — single round-trip, only fetches docs that exist
+  const fetchRange = useCallback(async (start: string, end: string): Promise<Record<string, DailyData>> => {
+    if (!user) return {};
+    const snap = await getDocs(query(
+      collection(db, 'users', user.uid, 'daily_logs'),
+      where(documentId(), '>=', start),
+      where(documentId(), '<=', end),
+    ));
+    const result: Record<string, DailyData> = {};
+    snap.docs.forEach(d => { result[d.id] = { ...emptyDay(), ...(d.data() as Partial<DailyData>) }; });
+    return result;
+  }, [user]);
+
   // ── Effects ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -179,28 +193,16 @@ export default function Page() {
 
   useEffect(() => {
     if (tab !== 'mes' || monthFetched || !user) return;
-    const today = new Date();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const dates = Array.from({ length: daysInMonth }, (_, i) =>
-      dateStr(new Date(today.getFullYear(), today.getMonth(), i + 1))
-    );
-    fetchDates(dates).then(data => { setMonthData(data); setMonthFetched(true); });
-  }, [tab, monthFetched, user, fetchDates]);
+    const now = new Date();
+    const start = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    fetchRange(start, getTodayStr()).then(data => { setMonthData(data); setMonthFetched(true); });
+  }, [tab, monthFetched, user, fetchRange]);
 
   useEffect(() => {
     if (tab !== 'ano' || yearFetched || !user) return;
     const year = new Date().getFullYear();
-    const today = getTodayStr();
-    const dates: string[] = [];
-    for (let m = 0; m < 12; m++) {
-      const days = new Date(year, m + 1, 0).getDate();
-      for (let d = 1; d <= days; d++) {
-        const s = dateStr(new Date(year, m, d));
-        if (s <= today) dates.push(s);
-      }
-    }
-    fetchDates(dates).then(data => { setYearData(data); setYearFetched(true); });
-  }, [tab, yearFetched, user, fetchDates]);
+    fetchRange(`${year}-01-01`, getTodayStr()).then(data => { setYearData(data); setYearFetched(true); });
+  }, [tab, yearFetched, user, fetchRange]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 

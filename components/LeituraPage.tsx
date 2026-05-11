@@ -1,0 +1,841 @@
+'use client';
+
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import {
+  collection, doc, getDocs, addDoc, updateDoc, deleteDoc, Timestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  Plus, ChevronLeft, ChevronRight, X, Check, Star, BookOpen,
+  BookMarked, RefreshCw, Calendar, Pencil, Trash2,
+} from 'lucide-react';
+
+// ─── types ────────────────────────────────────────────────────────────────────
+
+interface Book {
+  id: string;
+  name: string;
+  author: string;
+  coverUrl?: string;
+  totalPages: number;
+  startDate: string;       // YYYY-MM-DD
+  finishDate?: string;
+  rating?: number;         // 0–10
+  status: 'reading' | 'finished';
+}
+
+interface ReadingSession {
+  id: string;
+  bookId: string;
+  date: string;            // YYYY-MM-DD
+  pagesRead: number;
+}
+
+type ModalType = null | 'addBook' | 'addSession' | 'finishBook' | 'bookDetail';
+type TlScale   = 'month' | 'quarter' | 'year' | 'all';
+type StatView  = 'week' | 'month' | 'year';
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+const MONTHS_PT    = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function parseDate(s: string) { return new Date(s + 'T12:00:00'); }
+function daysBetween(a: Date, b: Date) {
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+function addDays(d: Date, n: number) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function fmt(d: Date) {
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allBooks: Book[]): { start: Date; end: Date } {
+  const now = new Date();
+  if (scale === 'month') {
+    return { start: new Date(tlYear, tlMonth, 1), end: new Date(tlYear, tlMonth + 1, 0) };
+  }
+  if (scale === 'quarter') {
+    const q = Math.floor(tlMonth / 3);
+    return { start: new Date(tlYear, q * 3, 1), end: new Date(tlYear, q * 3 + 3, 0) };
+  }
+  if (scale === 'year') {
+    return { start: new Date(tlYear, 0, 1), end: new Date(tlYear, 11, 31) };
+  }
+  // all
+  const starts = allBooks.map(b => parseDate(b.startDate));
+  const earliest = starts.length ? new Date(Math.min(...starts.map(d => d.getTime()))) : now;
+  return { start: earliest, end: now };
+}
+
+function getXTicks(start: Date, end: Date, scale: TlScale): { label: string; pct: number }[] {
+  const total = daysBetween(start, end) || 1;
+  const ticks: { label: string; pct: number }[] = [];
+
+  if (scale === 'month') {
+    for (let d = new Date(start); d <= end; d = addDays(d, 5)) {
+      ticks.push({ label: String(d.getDate()), pct: daysBetween(start, d) / total * 100 });
+    }
+  } else if (scale === 'quarter') {
+    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cur <= end) {
+      ticks.push({ label: MONTHS_SHORT[cur.getMonth()], pct: daysBetween(start, cur) / total * 100 });
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+  } else if (scale === 'year') {
+    for (let m = 0; m < 12; m++) {
+      const d = new Date(start.getFullYear(), m, 1);
+      if (d >= start && d <= end)
+        ticks.push({ label: MONTHS_SHORT[m], pct: daysBetween(start, d) / total * 100 });
+    }
+  } else {
+    // all — tick every 3 months
+    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cur <= end) {
+      ticks.push({
+        label: `${MONTHS_SHORT[cur.getMonth()]} ${String(cur.getFullYear()).slice(2)}`,
+        pct: daysBetween(start, cur) / total * 100,
+      });
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+    }
+  }
+  return ticks.filter(t => t.pct >= 0 && t.pct <= 100);
+}
+
+function periodDates(view: StatView): { start: string; end: string } {
+  const now   = new Date();
+  const today = todayStr();
+  if (view === 'week') {
+    const dow = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+    const start = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
+    return { start, end: today };
+  }
+  if (view === 'month') {
+    return {
+      start: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`,
+      end: today,
+    };
+  }
+  return { start: `${now.getFullYear()}-01-01`, end: today };
+}
+
+// ─── Modal base ───────────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-white">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-medium text-slate-400">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-sky-500/50 focus:bg-white/8 transition';
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function LeituraPage() {
+  const { user } = useAuth();
+
+  const [books,    setBooks]    = useState<Book[]>([]);
+  const [sessions, setSessions] = useState<ReadingSession[]>([]);
+  const [loading,  setLoading]  = useState(true);
+
+  // modal
+  const [modal,         setModal]         = useState<ModalType>(null);
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+
+  // timeline
+  const [tlScale,  setTlScale]  = useState<TlScale>('month');
+  const [tlYear,   setTlYear]   = useState(new Date().getFullYear());
+  const [tlMonth,  setTlMonth]  = useState(new Date().getMonth());
+
+  // stats
+  const [statView, setStatView] = useState<StatView>('month');
+  const [showFinishedYear, setShowFinishedYear] = useState(new Date().getFullYear());
+  const [showBookList, setShowBookList] = useState(false);
+
+  // ── add book form ──
+  const [bkName,    setBkName]    = useState('');
+  const [bkAuthor,  setBkAuthor]  = useState('');
+  const [bkCover,   setBkCover]   = useState('');
+  const [bkPages,   setBkPages]   = useState('');
+  const [bkStart,   setBkStart]   = useState(todayStr());
+  const [bkSaving,  setBkSaving]  = useState(false);
+
+  // ── add session form ──
+  const [ssBook,   setSsBook]   = useState('');
+  const [ssPages,  setSsPages]  = useState('');
+  const [ssDate,   setSsDate]   = useState(todayStr());
+  const [ssSaving, setSsSaving] = useState(false);
+
+  // ── finish book form ──
+  const [fnRating, setFnRating] = useState('');
+  const [fnDate,   setFnDate]   = useState(todayStr());
+  const [fnSaving, setFnSaving] = useState(false);
+
+  // ── load ──────────────────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [bSnap, sSnap] = await Promise.all([
+        getDocs(collection(db, 'users', user.uid, 'books')),
+        getDocs(collection(db, 'users', user.uid, 'reading_sessions')),
+      ]);
+      setBooks(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Book)));
+      setSessions(sSnap.docs.map(d => ({ id: d.id, ...d.data() } as ReadingSession)));
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // ── derived ───────────────────────────────────────────────────────────────
+  const pagesByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    sessions.forEach(s => { map[s.date] = (map[s.date] ?? 0) + s.pagesRead; });
+    return map;
+  }, [sessions]);
+
+  const pagesByBook = useMemo(() => {
+    const map: Record<string, number> = {};
+    sessions.forEach(s => { map[s.bookId] = (map[s.bookId] ?? 0) + s.pagesRead; });
+    return map;
+  }, [sessions]);
+
+  const selectedBook = useMemo(
+    () => books.find(b => b.id === selectedBookId) ?? null,
+    [books, selectedBookId]
+  );
+
+  // timeline
+  const tlRange = useMemo(
+    () => getTimelineRange(tlScale, tlYear, tlMonth, books),
+    [tlScale, tlYear, tlMonth, books]
+  );
+  const tlDays = useMemo(() => Math.max(daysBetween(tlRange.start, tlRange.end), 1), [tlRange]);
+  const tlTicks = useMemo(() => getXTicks(tlRange.start, tlRange.end, tlScale), [tlRange, tlScale]);
+
+  const booksInTimeline = useMemo(() => {
+    const today = parseDate(todayStr());
+    return books
+      .map(book => {
+        const bStart = parseDate(book.startDate);
+        const bEnd   = book.finishDate ? parseDate(book.finishDate) : today;
+        const visStart = bStart < tlRange.start ? tlRange.start : bStart;
+        const visEnd   = bEnd   > tlRange.end   ? tlRange.end   : bEnd;
+        if (visEnd < visStart) return null;
+        const leftPct  = daysBetween(tlRange.start, visStart) / tlDays * 100;
+        const widthPct = Math.max(daysBetween(visStart, visEnd) / tlDays * 100, 0.5);
+        return { book, leftPct, widthPct };
+      })
+      .filter(Boolean) as { book: Book; leftPct: number; widthPct: number }[];
+  }, [books, tlRange, tlDays]);
+
+  // stats
+  const statPeriod = useMemo(() => periodDates(statView), [statView]);
+
+  const statPages = useMemo(() => {
+    const entries = Object.entries(pagesByDate).filter(
+      ([d]) => d >= statPeriod.start && d <= statPeriod.end
+    );
+    const total    = entries.reduce((s, [, p]) => s + p, 0);
+    const days     = entries.length;
+    const best     = entries.reduce((m, [, p]) => Math.max(m, p), 0);
+    const bestDate = entries.find(([, p]) => p === best)?.[0] ?? '';
+    return { total, days, avg: days > 0 ? Math.round(total / days) : 0, best, bestDate };
+  }, [pagesByDate, statPeriod]);
+
+  const monthlyPages = useMemo(() => {
+    return Array.from({ length: 12 }, (_, m) => {
+      const prefix = `${new Date().getFullYear()}-${String(m+1).padStart(2,'0')}`;
+      const total  = Object.entries(pagesByDate)
+        .filter(([d]) => d.startsWith(prefix))
+        .reduce((s, [, p]) => s + p, 0);
+      return { month: m, total };
+    });
+  }, [pagesByDate]);
+
+  const monthlyMax = Math.max(...monthlyPages.map(m => m.total), 1);
+
+  const finishedThisYear = useMemo(
+    () => books.filter(b => b.status === 'finished' && b.finishDate?.startsWith(String(showFinishedYear))),
+    [books, showFinishedYear]
+  );
+
+  // ── timeline navigation ───────────────────────────────────────────────────
+  const now = new Date();
+  const tlAtPresent =
+    tlScale === 'all' ? true :
+    tlScale === 'month' ? tlYear === now.getFullYear() && tlMonth === now.getMonth() :
+    tlScale === 'quarter' ? tlYear === now.getFullYear() && Math.floor(tlMonth/3) === Math.floor(now.getMonth()/3) :
+    tlYear >= now.getFullYear();
+
+  function tlPrev() {
+    if (tlScale === 'month') {
+      if (tlMonth === 0) { setTlMonth(11); setTlYear(y => y - 1); } else setTlMonth(m => m - 1);
+    } else if (tlScale === 'quarter') {
+      const q = Math.floor(tlMonth / 3);
+      if (q === 0) { setTlMonth(9); setTlYear(y => y - 1); } else setTlMonth((q - 1) * 3);
+    } else if (tlScale === 'year') {
+      setTlYear(y => y - 1);
+    }
+  }
+  function tlNext() {
+    if (tlAtPresent) return;
+    if (tlScale === 'month') {
+      if (tlMonth === 11) { setTlMonth(0); setTlYear(y => y + 1); } else setTlMonth(m => m + 1);
+    } else if (tlScale === 'quarter') {
+      const q = Math.floor(tlMonth / 3);
+      if (q === 3) { setTlMonth(0); setTlYear(y => y + 1); } else setTlMonth((q + 1) * 3);
+    } else if (tlScale === 'year') {
+      setTlYear(y => y + 1);
+    }
+  }
+
+  const tlLabel = useMemo(() => {
+    if (tlScale === 'month')   return `${MONTHS_PT[tlMonth]} ${tlYear}`;
+    if (tlScale === 'quarter') return `T${Math.floor(tlMonth/3)+1} ${tlYear}`;
+    if (tlScale === 'year')    return String(tlYear);
+    return 'Todo o período';
+  }, [tlScale, tlMonth, tlYear]);
+
+  // ── actions ───────────────────────────────────────────────────────────────
+  async function handleAddBook() {
+    if (!user || !bkName || !bkPages) return;
+    setBkSaving(true);
+    try {
+      const ref = await addDoc(collection(db, 'users', user.uid, 'books'), {
+        name: bkName, author: bkAuthor, coverUrl: bkCover || null,
+        totalPages: Number(bkPages), startDate: bkStart,
+        status: 'reading', createdAt: Timestamp.now(),
+      });
+      setBooks(prev => [...prev, {
+        id: ref.id, name: bkName, author: bkAuthor, coverUrl: bkCover || undefined,
+        totalPages: Number(bkPages), startDate: bkStart, status: 'reading',
+      }]);
+      setModal(null);
+      setBkName(''); setBkAuthor(''); setBkCover(''); setBkPages(''); setBkStart(todayStr());
+    } finally { setBkSaving(false); }
+  }
+
+  async function handleAddSession() {
+    if (!user || !ssBook || !ssPages) return;
+    setSsSaving(true);
+    try {
+      const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
+        bookId: ssBook, pagesRead: Number(ssPages), date: ssDate, createdAt: Timestamp.now(),
+      });
+      setSessions(prev => [...prev, { id: ref.id, bookId: ssBook, pagesRead: Number(ssPages), date: ssDate }]);
+      setModal(null);
+      setSsBook(''); setSsPages(''); setSsDate(todayStr());
+    } finally { setSsSaving(false); }
+  }
+
+  async function handleFinishBook() {
+    if (!user || !selectedBookId) return;
+    setFnSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid, 'books', selectedBookId), {
+        status: 'finished', finishDate: fnDate,
+        rating: fnRating ? Number(fnRating) : null,
+      });
+      setBooks(prev => prev.map(b =>
+        b.id === selectedBookId
+          ? { ...b, status: 'finished', finishDate: fnDate, rating: fnRating ? Number(fnRating) : undefined }
+          : b
+      ));
+      setModal(null);
+      setFnRating(''); setFnDate(todayStr());
+    } finally { setFnSaving(false); }
+  }
+
+  async function handleDeleteBook(bookId: string) {
+    if (!user) return;
+    await deleteDoc(doc(db, 'users', user.uid, 'books', bookId));
+    setBooks(prev => prev.filter(b => b.id !== bookId));
+    setModal(null);
+  }
+
+  function openDetail(book: Book) {
+    setSelectedBookId(book.id);
+    setModal('bookDetail');
+  }
+
+  function openFinish(bookId: string) {
+    setSelectedBookId(bookId);
+    setFnDate(todayStr());
+    setModal('finishBook');
+  }
+
+  // ── loading ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return <div className="flex h-48 items-center justify-center text-slate-500">Carregando...</div>;
+  }
+
+  const readingBooks  = books.filter(b => b.status === 'reading');
+  const bookBarH = 40;
+
+  return (
+    <div className="space-y-5">
+
+      {/* Actions row */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => setModal('addBook')}
+          className="flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20">
+          <Plus size={15} /> Adicionar Livro
+        </button>
+        <button onClick={() => { setSsBook(readingBooks[0]?.id ?? ''); setModal('addSession'); }}
+          disabled={readingBooks.length === 0}
+          className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-40">
+          <BookOpen size={15} /> Registrar Leitura
+        </button>
+        <button onClick={loadData}
+          className="ml-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-300">
+          <RefreshCw size={12} /> Atualizar
+        </button>
+      </div>
+
+      {/* Currently reading */}
+      {readingBooks.length > 0 && (
+        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl">
+          <p className="mb-4 text-xs font-medium uppercase tracking-widest text-slate-500">Lendo agora</p>
+          <div className="space-y-3">
+            {readingBooks.map(book => {
+              const read = pagesByBook[book.id] ?? 0;
+              const pct  = Math.min(read / book.totalPages * 100, 100);
+              return (
+                <div key={book.id} className="flex items-center gap-4">
+                  {book.coverUrl
+                    ? <img src={book.coverUrl} alt="" className="h-12 w-9 rounded-md object-cover shrink-0" />
+                    : <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md bg-sky-500/20 text-base font-bold text-sky-300">{book.name[0]}</div>
+                  }
+                  <div className="flex-1 min-w-0">
+                    <button onClick={() => openDetail(book)}
+                      className="text-sm font-medium text-white hover:text-sky-300 transition truncate block text-left">
+                      {book.name}
+                    </button>
+                    <p className="text-xs text-slate-500 truncate">{book.author}</p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
+                        <div className="h-full bg-sky-500 transition-all duration-700" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0">{read}/{book.totalPages} pág.</span>
+                    </div>
+                  </div>
+                  <button onClick={() => openFinish(book.id)}
+                    className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/20">
+                    Finalizar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+        {/* Scale tabs + navigation */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 rounded-2xl border border-white/5 bg-slate-900/40 p-1">
+            {(['month','quarter','year','all'] as TlScale[]).map(s => (
+              <button key={s} onClick={() => setTlScale(s)}
+                className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                  tlScale === s ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'
+                }`}>
+                {s === 'month' ? 'Mês' : s === 'quarter' ? 'Trimestre' : s === 'year' ? 'Ano' : 'Tudo'}
+              </button>
+            ))}
+          </div>
+
+          {tlScale !== 'all' && (
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={tlPrev}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 transition hover:border-sky-500/30 hover:text-white">
+                <ChevronLeft size={15} />
+              </button>
+              <span className="min-w-[120px] text-center text-sm font-medium text-slate-200">{tlLabel}</span>
+              <button onClick={tlNext} disabled={tlAtPresent}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 transition hover:border-sky-500/30 hover:text-white disabled:pointer-events-none disabled:opacity-30">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
+          {tlScale === 'all' && (
+            <span className="ml-auto text-sm font-medium text-slate-400">{tlLabel}</span>
+          )}
+        </div>
+
+        {books.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-600">Nenhum livro cadastrado ainda.</p>
+        ) : booksInTimeline.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-600">Nenhum livro neste período.</p>
+        ) : (
+          <div>
+            {/* X-axis ticks */}
+            <div className="relative mb-2 ml-28 h-5 border-b border-white/5">
+              {tlTicks.map((tick, i) => (
+                <span key={i}
+                  className="absolute -translate-x-1/2 text-[9px] text-slate-600"
+                  style={{ left: `${tick.pct}%`, bottom: 4 }}>
+                  {tick.label}
+                </span>
+              ))}
+            </div>
+
+            {/* Book rows */}
+            <div className="space-y-1.5">
+              {booksInTimeline.map(({ book, leftPct, widthPct }) => {
+                const color = book.status === 'finished'
+                  ? 'bg-emerald-500/40 border-emerald-500/50 text-emerald-200'
+                  : 'bg-sky-500/30 border-sky-500/40 text-sky-200';
+                return (
+                  <div key={book.id} className="flex items-center gap-2" style={{ height: bookBarH }}>
+                    {/* Book label */}
+                    <button onClick={() => openDetail(book)}
+                      className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate hover:text-sky-300 transition pr-2">
+                      {book.name}
+                    </button>
+                    {/* Bar area */}
+                    <div className="relative flex-1 h-7">
+                      <div
+                        className={`absolute top-0 h-full rounded-full border cursor-pointer transition hover:brightness-125 ${color}`}
+                        style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: 6 }}
+                        onClick={() => openDetail(book)}
+                        title={`${book.name}${book.finishDate ? ` · Finalizado ${book.finishDate}` : ' · Lendo'}`}
+                      >
+                        {widthPct > 8 && (
+                          <span className="absolute inset-0 flex items-center justify-center truncate px-2 text-[10px] font-medium">
+                            {book.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="mt-4 flex gap-4 border-t border-white/5 pt-4 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-500/40 border border-sky-500/50" /> Lendo</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500/40 border border-emerald-500/50" /> Finalizado</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Statistics */}
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+        <p className="mb-4 text-xs font-medium uppercase tracking-widest text-slate-500">Estatísticas</p>
+
+        {/* Period tabs */}
+        <div className="mb-5 flex gap-1 rounded-2xl border border-white/5 bg-slate-900/40 p-1">
+          {(['week','month','year'] as StatView[]).map(v => (
+            <button key={v} onClick={() => setStatView(v)}
+              className={`flex-1 rounded-xl py-1.5 text-xs font-medium transition ${
+                statView === v ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'
+              }`}>
+              {v === 'week' ? 'Semana' : v === 'month' ? 'Mês' : 'Ano'}
+            </button>
+          ))}
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Total de páginas', value: statPages.total.toLocaleString('pt-BR') },
+            { label: 'Média/dia',        value: `${statPages.avg}` },
+            { label: 'Melhor dia',       value: `${statPages.best}`, sub: statPages.bestDate ? new Date(statPages.bestDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }) : '' },
+            { label: 'Dias com leitura', value: `${statPages.days}` },
+          ].map(({ label, value, sub }) => (
+            <div key={label} className="rounded-2xl border border-white/5 bg-slate-900/40 p-4">
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-slate-600">{label}</p>
+              <p className="text-xl font-bold text-white">{value}</p>
+              {sub && <p className="mt-0.5 text-[10px] text-slate-500">{sub}</p>}
+            </div>
+          ))}
+        </div>
+
+        {/* Monthly pages bar chart */}
+        <div className="mt-5 border-t border-white/5 pt-5">
+          <p className="mb-3 text-xs text-slate-500">Páginas por mês ({new Date().getFullYear()})</p>
+          <div className="flex items-end gap-px" style={{ height: 80 }}>
+            {monthlyPages.map(({ month, total }) => {
+              const h = monthlyMax > 0 ? Math.max(total / monthlyMax * 80, total > 0 ? 2 : 0) : 0;
+              const isCur = month === new Date().getMonth();
+              return (
+                <div key={month} style={{ flex: 1, height: 80, display: 'flex', alignItems: 'flex-end', position: 'relative' }}
+                  className="group/mb">
+                  {total > 0 && (
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 opacity-0 transition-opacity group-hover/mb:opacity-100">
+                      <div className="rounded-lg border border-white/10 bg-slate-800 px-2 py-1 text-[9px] text-white whitespace-nowrap shadow-xl">
+                        {total} pág.
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ width: '100%', height: Math.max(h, 2) }}
+                    className={`rounded-t-sm transition-all duration-500 ${
+                      total > 0 ? (isCur ? 'bg-sky-400' : 'bg-sky-600/60') : 'bg-slate-800/30'
+                    }`} />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-px mt-1">
+            {monthlyPages.map(({ month }) => (
+              <div key={month} style={{ flex: 1 }}
+                className={`text-center text-[9px] ${month === new Date().getMonth() ? 'font-bold text-sky-400' : 'text-slate-600'}`}>
+                {MONTHS_SHORT[month]}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Finished books per year */}
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowFinishedYear(y => y - 1)}
+              className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-sm font-medium text-slate-200">{showFinishedYear}</span>
+            <button onClick={() => setShowFinishedYear(y => y + 1)}
+              disabled={showFinishedYear >= new Date().getFullYear()}
+              className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition disabled:opacity-30 disabled:pointer-events-none">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-white">{finishedThisYear.length}</span>
+            <span className="text-xs text-slate-500">livros lidos</span>
+            {finishedThisYear.length > 0 && (
+              <button onClick={() => setShowBookList(v => !v)}
+                className="text-[11px] text-sky-400 hover:text-sky-300 transition">
+                {showBookList ? 'Ocultar' : 'Ver lista'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showBookList && finishedThisYear.length > 0 && (
+          <div className="space-y-2 border-t border-white/5 pt-4">
+            {finishedThisYear.map(book => (
+              <div key={book.id} className="flex items-center gap-3">
+                {book.coverUrl
+                  ? <img src={book.coverUrl} alt="" className="h-10 w-7 rounded object-cover shrink-0" />
+                  : <div className="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-sky-500/20 text-sm font-bold text-sky-300">{book.name[0]}</div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{book.name}</p>
+                  <p className="text-xs text-slate-500 truncate">{book.author}</p>
+                </div>
+                {book.rating != null && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Star size={11} className="text-yellow-400 fill-yellow-400" />
+                    <span className="text-xs font-medium text-yellow-300">{book.rating}/10</span>
+                  </div>
+                )}
+                {book.finishDate && (
+                  <span className="text-[10px] text-slate-600 shrink-0">
+                    {new Date(book.finishDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {finishedThisYear.length === 0 && (
+          <p className="text-center text-sm text-slate-600 py-2">Nenhum livro finalizado em {showFinishedYear}.</p>
+        )}
+      </div>
+
+      {/* ── Modals ── */}
+
+      {modal === 'addBook' && (
+        <Modal title="Adicionar Livro" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <Field label="Nome do livro *">
+              <input className={inputCls} value={bkName} onChange={e => setBkName(e.target.value)} placeholder="Ex: O Hobbit" />
+            </Field>
+            <Field label="Autor">
+              <input className={inputCls} value={bkAuthor} onChange={e => setBkAuthor(e.target.value)} placeholder="Ex: J.R.R. Tolkien" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Número de páginas *">
+                <input className={inputCls} type="number" min={1} value={bkPages} onChange={e => setBkPages(e.target.value)} placeholder="320" />
+              </Field>
+              <Field label="Data de início">
+                <input className={inputCls} type="date" value={bkStart} onChange={e => setBkStart(e.target.value)} />
+              </Field>
+            </div>
+            <Field label="URL da capa (opcional)">
+              <input className={inputCls} value={bkCover} onChange={e => setBkCover(e.target.value)} placeholder="https://..." />
+            </Field>
+            <button onClick={handleAddBook} disabled={!bkName || !bkPages || bkSaving}
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/25 disabled:opacity-50">
+              {bkSaving ? 'Salvando...' : <><Check size={14} /> Salvar livro</>}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modal === 'addSession' && (
+        <Modal title="Registrar Leitura" onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <Field label="Livro *">
+              <select className={inputCls} value={ssBook} onChange={e => setSsBook(e.target.value)}>
+                <option value="">Selecione...</option>
+                {readingBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Páginas lidas *">
+                <input className={inputCls} type="number" min={1} value={ssPages} onChange={e => setSsPages(e.target.value)} placeholder="30" />
+              </Field>
+              <Field label="Data">
+                <input className={inputCls} type="date" value={ssDate} onChange={e => setSsDate(e.target.value)} />
+              </Field>
+            </div>
+            <button onClick={handleAddSession} disabled={!ssBook || !ssPages || ssSaving}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50">
+              {ssSaving ? 'Salvando...' : <><Check size={14} /> Registrar</>}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modal === 'finishBook' && selectedBook && (
+        <Modal title={`Finalizar: ${selectedBook.name}`} onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nota (0–10)">
+                <input className={inputCls} type="number" min={0} max={10} step={0.5}
+                  value={fnRating} onChange={e => setFnRating(e.target.value)} placeholder="8.5" />
+              </Field>
+              <Field label="Data de finalização">
+                <input className={inputCls} type="date" value={fnDate} onChange={e => setFnDate(e.target.value)} />
+              </Field>
+            </div>
+            <button onClick={handleFinishBook} disabled={fnSaving}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/15 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50">
+              {fnSaving ? 'Salvando...' : <><Check size={14} /> Marcar como lido</>}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modal === 'bookDetail' && selectedBook && (
+        <Modal title={selectedBook.name} onClose={() => setModal(null)}>
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              {selectedBook.coverUrl
+                ? <img src={selectedBook.coverUrl} alt="" className="h-24 w-16 rounded-lg object-cover shrink-0" />
+                : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-sky-500/20 text-2xl font-bold text-sky-300">{selectedBook.name[0]}</div>
+              }
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white">{selectedBook.name}</p>
+                <p className="text-sm text-slate-400">{selectedBook.author}</p>
+                <p className="mt-2 text-xs text-slate-500">{selectedBook.totalPages} páginas</p>
+                <p className="text-xs text-slate-500">
+                  Início: {new Date(selectedBook.startDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </p>
+                {selectedBook.finishDate && (
+                  <p className="text-xs text-emerald-400">
+                    Finalizado: {new Date(selectedBook.finishDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+                {selectedBook.rating != null && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-yellow-400">
+                    <Star size={11} className="fill-yellow-400" /> {selectedBook.rating}/10
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Progress */}
+            {selectedBook.status === 'reading' && (
+              <div>
+                <div className="mb-1 flex justify-between text-xs text-slate-500">
+                  <span>Progresso</span>
+                  <span>{pagesByBook[selectedBook.id] ?? 0} / {selectedBook.totalPages} pág.</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full bg-sky-500 transition-all"
+                    style={{ width: `${Math.min((pagesByBook[selectedBook.id] ?? 0) / selectedBook.totalPages * 100, 100)}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* Sessions */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-500">Sessões de leitura</p>
+              <div className="max-h-36 overflow-y-auto space-y-1.5">
+                {sessions.filter(s => s.bookId === selectedBook.id)
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map(s => (
+                    <div key={s.id} className="flex items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2">
+                      <span className="text-xs text-slate-400">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                      <span className="text-xs font-medium text-white">{s.pagesRead} pág.</span>
+                    </div>
+                  ))}
+                {sessions.filter(s => s.bookId === selectedBook.id).length === 0 && (
+                  <p className="text-xs text-slate-600 text-center py-2">Nenhuma sessão registrada.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              {selectedBook.status === 'reading' && (
+                <>
+                  <button onClick={() => { setSsBook(selectedBook.id); setModal('addSession'); }}
+                    className="flex-1 rounded-2xl border border-sky-500/30 bg-sky-500/10 py-2 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition">
+                    + Sessão
+                  </button>
+                  <button onClick={() => openFinish(selectedBook.id)}
+                    className="flex-1 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition">
+                    Finalizar
+                  </button>
+                </>
+              )}
+              <button onClick={() => handleDeleteBook(selectedBook.id)}
+                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition">
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+    </div>
+  );
+}

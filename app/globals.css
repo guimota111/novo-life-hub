@@ -20,6 +20,12 @@ body {
   margin: 0;
 }
 
+@media (max-width: 767px) {
+  body {
+    padding-bottom: 5rem;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { collection, doc, getDocs, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, query, where, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -90,16 +90,28 @@ function BarChart({ bars, maxVal, goalSteps, showGoalLine = false }: {
 
   return (
     <div>
-      <div className="relative flex items-end gap-px" style={{ height: CHART_H }}>
+      <div className="relative flex items-end gap-px" style={{ height: CHART_H, overflow: 'visible' }}>
         {goalBottom !== null && (
           <div className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-emerald-500/30"
             style={{ bottom: goalBottom }} />
         )}
-        {bars.map(({ key, steps, isToday, isFuture }) => {
+        {bars.map(({ key, label, steps, km, isToday, isFuture }) => {
           const h = maxVal > 0 && steps > 0 && !isFuture
             ? Math.max((steps / maxVal) * CHART_H, 2) : 0;
           return (
-            <div key={key} style={{ flex: 1, height: CHART_H, display: 'flex', alignItems: 'flex-end' }}>
+            <div key={key}
+              style={{ flex: 1, height: CHART_H, display: 'flex', alignItems: 'flex-end', position: 'relative' }}
+              className="group/bar">
+              {steps > 0 && !isFuture && (
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 -translate-x-1/2 opacity-0 transition-opacity group-hover/bar:opacity-100">
+                  <div className="rounded-lg border border-white/10 bg-slate-800 px-2.5 py-1.5 shadow-xl" style={{ minWidth: 76 }}>
+                    <p className="text-center text-[10px] font-semibold text-white whitespace-nowrap">{steps.toLocaleString('pt-BR')} passos</p>
+                    {km > 0 && <p className="text-center text-[9px] text-cyan-400">{km.toFixed(2)} km</p>}
+                    <p className="text-center text-[9px] text-slate-500">{label}</p>
+                  </div>
+                  <div className="mx-auto h-1.5 w-1.5 -translate-y-px rotate-45 border-b border-r border-white/10 bg-slate-800" />
+                </div>
+              )}
               <div
                 style={{ width: '100%', height: Math.max(h, 2) }}
                 className={`rounded-t-sm transition-all duration-500 ${
@@ -150,8 +162,12 @@ export default function PassosStats() {
     if (!user) return;
     setLoading(true);
     try {
+      const yearStart = `${new Date().getFullYear()}-01-01`;
       const [logsSnap, goalsSnap, tokenSnap] = await Promise.all([
-        getDocs(collection(db, 'users', user.uid, 'daily_logs')),
+        getDocs(query(
+          collection(db, 'users', user.uid, 'daily_logs'),
+          where(documentId(), '>=', yearStart)
+        )),
         getDoc(doc(db, 'users', user.uid, 'settings', 'goals')),
         getDoc(doc(db, 'health_tokens', user.uid)),
       ]);

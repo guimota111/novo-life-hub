@@ -65,42 +65,33 @@ async function processAndWrite(userId: string, metrics: Metric[]): Promise<numbe
   const entries = Object.entries(byDate).filter(([, fields]) => Object.keys(fields).length > 0);
   if (entries.length === 0) return 0;
 
-  // Read existing docs to avoid overwriting larger values with incremental sync data
   const logsRef = adminDb.collection('users').doc(userId).collection('daily_logs');
-  const existingSnaps = await Promise.all(entries.map(([date]) => logsRef.doc(date).get()));
-  const existing: Record<string, Record<string, number>> = {};
-  existingSnaps.forEach(snap => {
-    if (snap.exists) existing[snap.id] = snap.data() as Record<string, number>;
-  });
 
   let count = 0;
   for (let i = 0; i < entries.length; i += 499) {
     const batch = adminDb.batch();
-    let hasWrites = false;
     for (const [date, fields] of entries.slice(i, i + 499)) {
-      const prev = existing[date] ?? {};
-      const toWrite: Record<string, number> = {};
-      for (const [field, value] of Object.entries(fields)) {
-        if ((prev[field] ?? 0) < value) toWrite[field] = value;
-      }
-      if (Object.keys(toWrite).length > 0) {
-        batch.set(logsRef.doc(date), toWrite, { merge: true });
-        hasWrites = true;
-        count++;
-      }
+      batch.set(logsRef.doc(date), fields, { merge: true });
+      count++;
     }
-    if (hasWrites) await batch.commit();
+    await batch.commit();
   }
 
   return count;
 }
 
-// Health Auto Export probes with GET before sending POST data
+// Health Auto Export probes with GET before sending POST data.
+// ts: Date.now() forces a unique body/ETag on every request — prevents 304 which blocks the POST.
 export async function GET(request: NextRequest) {
   const params = Object.fromEntries(request.nextUrl.searchParams.entries());
   console.log('[health/import GET] params:', JSON.stringify(params));
-  return NextResponse.json({ ok: true, params }, {
-    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+  return NextResponse.json({ ok: true, ts: Date.now(), params }, {
+    status: 200,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
   });
 }
 

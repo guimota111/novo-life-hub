@@ -1,13 +1,21 @@
 import Sidebar from '@/components/Sidebar';
+import FilmesPage from '@/components/FilmesPage';
+import { Film } from 'lucide-react';
 
-export default function FilmesPage() {
+export default function Page() {
   return (
     <main className="min-h-screen bg-[#08101a] text-slate-100">
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
-        <section className="flex-1 rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow backdrop-blur-xl">
-          <h1 className="text-3xl font-semibold text-white">Filmes</h1>
-          <p className="mt-4 text-slate-400">Monitore filmes assistidos, listas e metas de cinema.</p>
+        <section className="flex-1 space-y-5">
+          <header className="flex items-center gap-3 rounded-[2rem] border border-white/10 bg-white/5 px-7 py-5 shadow-glow backdrop-blur-xl">
+            <Film size={22} className="text-violet-400" />
+            <div>
+              <h1 className="text-xl font-semibold text-white">Filmes</h1>
+              <p className="text-sm text-slate-400">Filmes assistidos, watchlist e estatísticas.</p>
+            </div>
+          </header>
+          <FilmesPage />
         </section>
       </div>
     </main>

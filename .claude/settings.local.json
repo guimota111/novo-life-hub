@@ -17,7 +17,20 @@
       "Bash(firebase --help)",
       "Bash(firebase apphosting:rollouts:create --help)",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(firebase apphosting:rollouts:create tamagochi-back-end --git-branch master --force)",
+      "Bash(firebase deploy *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Pichau\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Pichau-Documents-Programa--es-NovoLifeHub\\\\9afe379d-43a6-4fc0-95cb-ebc2a91e46cd\\\\tasks\\\\b9iljeok9.output\" -Wait)",
+      "Bash(Select-String -Pattern \".\")",
+      "Bash(curl -s \"https://tamagochi-back-end--tamagochi-db43c.us-central1.hosted.app/api/health/import?token=3d4bc37f-99d7-45ce-b5fd-a937aeff5d6a\")",
+      "Bash(curl -si \"https://tamagochi-back-end--tamagochi-db43c.us-central1.hosted.app/api/health/import?token=3d4bc37f-99d7-45ce-b5fd-a937aeff5d6a\")",
+      "Bash(Select-String -Pattern \"HTTP|cache-control|content-type\")",
+      "Bash(git commit -m ' *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Pichau\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Pichau-Documents-Programa--es-NovoLifeHub\\\\9afe379d-43a6-4fc0-95cb-ebc2a91e46cd\\\\tasks\\\\bxki5nbw7.output\" -Wait)",
+      "Bash(Select-String \"complete|error|Error|Deploy\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\Pichau\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Pichau-Documents-Programa--es-NovoLifeHub\\\\9afe379d-43a6-4fc0-95cb-ebc2a91e46cd\\\\tasks\\\\bxki5nbw7.output\")",
+      "Bash(Select-Object -Last 10)"
     ]
   }
 }
