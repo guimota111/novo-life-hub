@@ -2,23 +2,18 @@
 # See https://firebase.google.com/docs/app-hosting/configure#cloud-run
 runConfig:
   minInstances: 0
-  # maxInstances: 100
-  # concurrency: 80
-  # cpu: 1
-  # memoryMiB: 512
 
-# Environment variables and secrets.
-# env:
-  # Configure environment variables.
-  # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
-  # - variable: MESSAGE
-  #   value: Hello world!
-  #   availability:
-  #     - BUILD
-  #     - RUNTIME
-
-  # Grant access to secrets in Cloud Secret Manager.
-  # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.
-  # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
-  # - variable: MY_SECRET
-  #   secret: mySecretRef
+env:
+  - variable: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    value: BAjSQDBywm_dAhrPz8N8Hk5lhgX0ZOrgT3ExvNgBtJG5vOkjPf5L-M7KXam44JBI35jr3cKjHpQ9WToKWDCkS1k
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: VAPID_EMAIL
+    value: mailto:guimota1@gmail.com
+    availability:
+      - RUNTIME
+  - variable: VAPID_PRIVATE_KEY
+    secret: VAPID_PRIVATE_KEY
+    availability:
+      - RUNTIME
