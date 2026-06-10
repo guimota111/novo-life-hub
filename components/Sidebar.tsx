@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
   LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
-  Footprints, GraduationCap, Menu,
+  Footprints, GraduationCap, Menu, Wind,
 } from 'lucide-react';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -19,6 +19,7 @@ const navItems = [
   { label: 'Exercícios',        href: '/exercicios', icon: HeartPulse },
   { label: 'Leitura',           href: '/leitura',    icon: BookOpen },
   { label: 'Estudo',            href: '/estudo',     icon: GraduationCap },
+  { label: 'Meditação',         href: '/meditacao',  icon: Wind },
   { label: 'Filmes',            href: '/filmes',     icon: Film },
   { label: 'Hidratação',        href: '/hidratacao', icon: Droplet },
   { label: 'Creatina',          href: '/creatina',   icon: Pill },

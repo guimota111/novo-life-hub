@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  collection, doc, getDocs, addDoc, updateDoc, deleteDoc, Timestamp,
+  collection, doc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, increment, Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus, ChevronLeft, ChevronRight, X, Check, Star, BookOpen,
-  BookMarked, RefreshCw, Calendar, Pencil, Trash2,
+  RefreshCw, Trash2,
 } from 'lucide-react';
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ interface Book {
   id: string;
   name: string;
   author: string;
+  genres: string[];
   coverUrl?: string;
   totalPages: number;
   startDate: string;       // YYYY-MM-DD
@@ -32,14 +33,22 @@ interface ReadingSession {
   pagesRead: number;
 }
 
-type ModalType = null | 'addBook' | 'addSession' | 'finishBook' | 'bookDetail';
+type ModalType = null | 'addBook' | 'addSession' | 'finishBook' | 'editBook';
 type TlScale   = 'month' | 'quarter' | 'year' | 'all';
 type StatView  = 'week' | 'month' | 'year';
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── constants ────────────────────────────────────────────────────────────────
+
+const BOOK_GENRES = [
+  'Ficção', 'Romance', 'Fantasia', 'Ficção Científica', 'Terror', 'Mistério',
+  'Thriller', 'Aventura', 'Histórico', 'Biografia', 'Autoajuda', 'Negócios',
+  'Ciência', 'Filosofia', 'Poesia', 'Conto', 'Clássico', 'Infantil', 'Mangá', 'HQ',
+];
 
 const MONTHS_PT    = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function todayStr() {
   const d = new Date();
@@ -52,9 +61,6 @@ function daysBetween(a: Date, b: Date) {
 }
 function addDays(d: Date, n: number) {
   const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
-function fmt(d: Date) {
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allBooks: Book[]): { start: Date; end: Date } {
@@ -69,7 +75,6 @@ function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allBo
   if (scale === 'year') {
     return { start: new Date(tlYear, 0, 1), end: new Date(tlYear, 11, 31) };
   }
-  // all
   const starts = allBooks.map(b => parseDate(b.startDate));
   const earliest = starts.length ? new Date(Math.min(...starts.map(d => d.getTime()))) : now;
   return { start: earliest, end: now };
@@ -96,7 +101,6 @@ function getXTicks(start: Date, end: Date, scale: TlScale): { label: string; pct
         ticks.push({ label: MONTHS_SHORT[m], pct: daysBetween(start, d) / total * 100 });
     }
   } else {
-    // all — tick every 3 months
     let cur = new Date(start.getFullYear(), start.getMonth(), 1);
     while (cur <= end) {
       ticks.push({
@@ -134,7 +138,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
@@ -156,6 +160,75 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-sky-500/50 focus:bg-white/8 transition';
 
+// ─── AuthorSelect ─────────────────────────────────────────────────────────────
+
+function AuthorSelect({ value, onChange, authors }: {
+  value: string;
+  onChange: (v: string) => void;
+  authors: string[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(
+    () => authors.filter(a => a.toLowerCase().includes(value.toLowerCase())),
+    [authors, value]
+  );
+
+  return (
+    <div className="relative">
+      <input
+        className={inputCls}
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Ex: J.R.R. Tolkien"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-[#0d1b2a] py-1 shadow-xl">
+          {filtered.map(a => (
+            <button key={a} type="button"
+              className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-white/5 transition"
+              onMouseDown={() => { onChange(a); setOpen(false); }}>
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── BookGenreMultiSelect ─────────────────────────────────────────────────────
+
+function BookGenreMultiSelect({ selected, onChange }: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  function toggle(genre: string) {
+    onChange(selected.includes(genre)
+      ? selected.filter(g => g !== genre)
+      : [...selected, genre]
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {BOOK_GENRES.map(genre => (
+        <button key={genre} type="button"
+          onClick={() => toggle(genre)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition border ${
+            selected.includes(genre)
+              ? 'border-sky-500/50 bg-sky-500/20 text-sky-300'
+              : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20 hover:text-slate-300'
+          }`}>
+          {genre}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function LeituraPage() {
@@ -166,7 +239,7 @@ export default function LeituraPage() {
   const [loading,  setLoading]  = useState(true);
 
   // modal
-  const [modal,         setModal]         = useState<ModalType>(null);
+  const [modal,          setModal]          = useState<ModalType>(null);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
 
   // timeline
@@ -175,17 +248,18 @@ export default function LeituraPage() {
   const [tlMonth,  setTlMonth]  = useState(new Date().getMonth());
 
   // stats
-  const [statView, setStatView] = useState<StatView>('month');
+  const [statView,         setStatView]         = useState<StatView>('month');
   const [showFinishedYear, setShowFinishedYear] = useState(new Date().getFullYear());
-  const [showBookList, setShowBookList] = useState(false);
+  const [showBookList,     setShowBookList]     = useState(false);
 
   // ── add book form ──
-  const [bkName,    setBkName]    = useState('');
-  const [bkAuthor,  setBkAuthor]  = useState('');
-  const [bkCover,   setBkCover]   = useState('');
-  const [bkPages,   setBkPages]   = useState('');
-  const [bkStart,   setBkStart]   = useState(todayStr());
-  const [bkSaving,  setBkSaving]  = useState(false);
+  const [bkName,   setBkName]   = useState('');
+  const [bkAuthor, setBkAuthor] = useState('');
+  const [bkGenres, setBkGenres] = useState<string[]>([]);
+  const [bkCover,  setBkCover]  = useState('');
+  const [bkPages,  setBkPages]  = useState('');
+  const [bkStart,  setBkStart]  = useState(todayStr());
+  const [bkSaving, setBkSaving] = useState(false);
 
   // ── add session form ──
   const [ssBook,   setSsBook]   = useState('');
@@ -198,6 +272,18 @@ export default function LeituraPage() {
   const [fnDate,   setFnDate]   = useState(todayStr());
   const [fnSaving, setFnSaving] = useState(false);
 
+  // ── edit book form ──
+  const [editName,   setEditName]   = useState('');
+  const [editAuthor, setEditAuthor] = useState('');
+  const [editGenres, setEditGenres] = useState<string[]>([]);
+  const [editCover,  setEditCover]  = useState('');
+  const [editPages,  setEditPages]  = useState('');
+  const [editStart,  setEditStart]  = useState('');
+  const [editStatus, setEditStatus] = useState<'reading' | 'finished'>('reading');
+  const [editFinish, setEditFinish] = useState('');
+  const [editRating, setEditRating] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
   // ── load ──────────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -207,7 +293,10 @@ export default function LeituraPage() {
         getDocs(collection(db, 'users', user.uid, 'books')),
         getDocs(collection(db, 'users', user.uid, 'reading_sessions')),
       ]);
-      setBooks(bSnap.docs.map(d => ({ id: d.id, ...d.data() } as Book)));
+      setBooks(bSnap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, genres: data.genres ?? [] } as Book;
+      }));
       setSessions(sSnap.docs.map(d => ({ id: d.id, ...d.data() } as ReadingSession)));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -233,20 +322,25 @@ export default function LeituraPage() {
     [books, selectedBookId]
   );
 
+  const authorList = useMemo(
+    () => [...new Set(books.map(b => b.author).filter(Boolean))].sort(),
+    [books]
+  );
+
   // timeline
   const tlRange = useMemo(
     () => getTimelineRange(tlScale, tlYear, tlMonth, books),
     [tlScale, tlYear, tlMonth, books]
   );
-  const tlDays = useMemo(() => Math.max(daysBetween(tlRange.start, tlRange.end), 1), [tlRange]);
+  const tlDays  = useMemo(() => Math.max(daysBetween(tlRange.start, tlRange.end), 1), [tlRange]);
   const tlTicks = useMemo(() => getXTicks(tlRange.start, tlRange.end, tlScale), [tlRange, tlScale]);
 
   const booksInTimeline = useMemo(() => {
     const today = parseDate(todayStr());
     return books
       .map(book => {
-        const bStart = parseDate(book.startDate);
-        const bEnd   = book.finishDate ? parseDate(book.finishDate) : today;
+        const bStart   = parseDate(book.startDate);
+        const bEnd     = book.finishDate ? parseDate(book.finishDate) : today;
         const visStart = bStart < tlRange.start ? tlRange.start : bStart;
         const visEnd   = bEnd   > tlRange.end   ? tlRange.end   : bEnd;
         if (visEnd < visStart) return null;
@@ -331,17 +425,54 @@ export default function LeituraPage() {
     setBkSaving(true);
     try {
       const ref = await addDoc(collection(db, 'users', user.uid, 'books'), {
-        name: bkName, author: bkAuthor, coverUrl: bkCover || null,
+        name: bkName, author: bkAuthor, genres: bkGenres, coverUrl: bkCover || null,
         totalPages: Number(bkPages), startDate: bkStart,
         status: 'reading', createdAt: Timestamp.now(),
       });
       setBooks(prev => [...prev, {
-        id: ref.id, name: bkName, author: bkAuthor, coverUrl: bkCover || undefined,
-        totalPages: Number(bkPages), startDate: bkStart, status: 'reading',
+        id: ref.id, name: bkName, author: bkAuthor, genres: bkGenres,
+        coverUrl: bkCover || undefined, totalPages: Number(bkPages),
+        startDate: bkStart, status: 'reading',
       }]);
       setModal(null);
-      setBkName(''); setBkAuthor(''); setBkCover(''); setBkPages(''); setBkStart(todayStr());
+      setBkName(''); setBkAuthor(''); setBkGenres([]); setBkCover(''); setBkPages(''); setBkStart(todayStr());
     } finally { setBkSaving(false); }
+  }
+
+  async function handleEditBook() {
+    if (!user || !selectedBookId || !editName || !editPages) return;
+    setEditSaving(true);
+    try {
+      const updates = {
+        name: editName,
+        author: editAuthor,
+        genres: editGenres,
+        coverUrl: editCover || null,
+        totalPages: Number(editPages),
+        startDate: editStart,
+        status: editStatus,
+        finishDate: editStatus === 'finished' ? editFinish : null,
+        rating: editStatus === 'finished' && editRating ? Number(editRating) : null,
+      };
+      await updateDoc(doc(db, 'users', user.uid, 'books', selectedBookId), updates);
+      setBooks(prev => prev.map(b =>
+        b.id === selectedBookId
+          ? {
+              ...b,
+              name: editName,
+              author: editAuthor,
+              genres: editGenres,
+              coverUrl: editCover || undefined,
+              totalPages: Number(editPages),
+              startDate: editStart,
+              status: editStatus,
+              finishDate: editStatus === 'finished' ? editFinish : undefined,
+              rating: editStatus === 'finished' && editRating ? Number(editRating) : undefined,
+            }
+          : b
+      ));
+      setModal(null);
+    } finally { setEditSaving(false); }
   }
 
   async function handleAddSession() {
@@ -351,6 +482,9 @@ export default function LeituraPage() {
       const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
         bookId: ssBook, pagesRead: Number(ssPages), date: ssDate, createdAt: Timestamp.now(),
       });
+      await setDoc(doc(db, 'users', user.uid, 'daily_logs', ssDate), {
+        reading_pages: increment(Number(ssPages)), updatedAt: new Date(),
+      }, { merge: true });
       setSessions(prev => [...prev, { id: ref.id, bookId: ssBook, pagesRead: Number(ssPages), date: ssDate }]);
       setModal(null);
       setSsBook(''); setSsPages(''); setSsDate(todayStr());
@@ -382,9 +516,18 @@ export default function LeituraPage() {
     setModal(null);
   }
 
-  function openDetail(book: Book) {
+  function openEdit(book: Book) {
     setSelectedBookId(book.id);
-    setModal('bookDetail');
+    setEditName(book.name);
+    setEditAuthor(book.author);
+    setEditGenres(book.genres ?? []);
+    setEditCover(book.coverUrl ?? '');
+    setEditPages(String(book.totalPages));
+    setEditStart(book.startDate);
+    setEditStatus(book.status);
+    setEditFinish(book.finishDate ?? todayStr());
+    setEditRating(book.rating != null ? String(book.rating) : '');
+    setModal('editBook');
   }
 
   function openFinish(bookId: string) {
@@ -398,7 +541,7 @@ export default function LeituraPage() {
     return <div className="flex h-48 items-center justify-center text-slate-500">Carregando...</div>;
   }
 
-  const readingBooks  = books.filter(b => b.status === 'reading');
+  const readingBooks = books.filter(b => b.status === 'reading');
   const bookBarH = 40;
 
   return (
@@ -436,11 +579,16 @@ export default function LeituraPage() {
                     : <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md bg-sky-500/20 text-base font-bold text-sky-300">{book.name[0]}</div>
                   }
                   <div className="flex-1 min-w-0">
-                    <button onClick={() => openDetail(book)}
+                    <button onClick={() => openEdit(book)}
                       className="text-sm font-medium text-white hover:text-sky-300 transition truncate block text-left">
                       {book.name}
                     </button>
-                    <p className="text-xs text-slate-500 truncate">{book.author}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs text-slate-500 truncate">{book.author}</p>
+                      {(book.genres ?? []).slice(0, 2).map(g => (
+                        <span key={g} className="rounded-full border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[9px] text-sky-400">{g}</span>
+                      ))}
+                    </div>
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
                         <div className="h-full bg-sky-500 transition-all duration-700" style={{ width: `${pct}%` }} />
@@ -517,17 +665,15 @@ export default function LeituraPage() {
                   : 'bg-sky-500/30 border-sky-500/40 text-sky-200';
                 return (
                   <div key={book.id} className="flex items-center gap-2" style={{ height: bookBarH }}>
-                    {/* Book label */}
-                    <button onClick={() => openDetail(book)}
+                    <button onClick={() => openEdit(book)}
                       className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate hover:text-sky-300 transition pr-2">
                       {book.name}
                     </button>
-                    {/* Bar area */}
                     <div className="relative flex-1 h-7">
                       <div
                         className={`absolute top-0 h-full rounded-full border cursor-pointer transition hover:brightness-125 ${color}`}
                         style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: 6 }}
-                        onClick={() => openDetail(book)}
+                        onClick={() => openEdit(book)}
                         title={`${book.name}${book.finishDate ? ` · Finalizado ${book.finishDate}` : ' · Lendo'}`}
                       >
                         {widthPct > 8 && (
@@ -555,7 +701,6 @@ export default function LeituraPage() {
       <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
         <p className="mb-4 text-xs font-medium uppercase tracking-widest text-slate-500">Estatísticas</p>
 
-        {/* Period tabs */}
         <div className="mb-5 flex gap-1 rounded-2xl border border-white/5 bg-slate-900/40 p-1">
           {(['week','month','year'] as StatView[]).map(v => (
             <button key={v} onClick={() => setStatView(v)}
@@ -567,7 +712,6 @@ export default function LeituraPage() {
           ))}
         </div>
 
-        {/* Stat cards */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: 'Total de páginas', value: statPages.total.toLocaleString('pt-BR') },
@@ -583,7 +727,6 @@ export default function LeituraPage() {
           ))}
         </div>
 
-        {/* Monthly pages bar chart */}
         <div className="mt-5 border-t border-white/5 pt-5">
           <p className="mb-3 text-xs text-slate-500">Páginas por mês ({new Date().getFullYear()})</p>
           <div className="flex items-end gap-px" style={{ height: 80 }}>
@@ -649,27 +792,35 @@ export default function LeituraPage() {
         {showBookList && finishedThisYear.length > 0 && (
           <div className="space-y-2 border-t border-white/5 pt-4">
             {finishedThisYear.map(book => (
-              <div key={book.id} className="flex items-center gap-3">
+              <button key={book.id} onClick={() => openEdit(book)}
+                className="flex w-full items-center gap-3 rounded-2xl p-1.5 transition hover:bg-white/5 text-left">
                 {book.coverUrl
                   ? <img src={book.coverUrl} alt="" className="h-10 w-7 rounded object-cover shrink-0" />
                   : <div className="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-sky-500/20 text-sm font-bold text-sky-300">{book.name[0]}</div>
                 }
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{book.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{book.author}</p>
-                </div>
-                {book.rating != null && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Star size={11} className="text-yellow-400 fill-yellow-400" />
-                    <span className="text-xs font-medium text-yellow-300">{book.rating}/10</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs text-slate-500 truncate">{book.author}</p>
+                    {(book.genres ?? []).slice(0, 2).map(g => (
+                      <span key={g} className="rounded-full border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[9px] text-sky-400">{g}</span>
+                    ))}
                   </div>
-                )}
-                {book.finishDate && (
-                  <span className="text-[10px] text-slate-600 shrink-0">
-                    {new Date(book.finishDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
-                  </span>
-                )}
-              </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {book.rating != null && (
+                    <div className="flex items-center gap-1">
+                      <Star size={11} className="text-yellow-400 fill-yellow-400" />
+                      <span className="text-xs font-medium text-yellow-300">{book.rating}/10</span>
+                    </div>
+                  )}
+                  {book.finishDate && (
+                    <span className="text-[10px] text-slate-600">
+                      {new Date(book.finishDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                </div>
+              </button>
             ))}
           </div>
         )}
@@ -688,7 +839,10 @@ export default function LeituraPage() {
               <input className={inputCls} value={bkName} onChange={e => setBkName(e.target.value)} placeholder="Ex: O Hobbit" />
             </Field>
             <Field label="Autor">
-              <input className={inputCls} value={bkAuthor} onChange={e => setBkAuthor(e.target.value)} placeholder="Ex: J.R.R. Tolkien" />
+              <AuthorSelect value={bkAuthor} onChange={setBkAuthor} authors={authorList} />
+            </Field>
+            <Field label="Gêneros">
+              <BookGenreMultiSelect selected={bkGenres} onChange={setBkGenres} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Número de páginas *">
@@ -754,82 +908,78 @@ export default function LeituraPage() {
         </Modal>
       )}
 
-      {modal === 'bookDetail' && selectedBook && (
-        <Modal title={selectedBook.name} onClose={() => setModal(null)}>
+      {modal === 'editBook' && selectedBook && (
+        <Modal title="Editar Livro" onClose={() => setModal(null)}>
           <div className="space-y-4">
-            <div className="flex gap-4">
-              {selectedBook.coverUrl
-                ? <img src={selectedBook.coverUrl} alt="" className="h-24 w-16 rounded-lg object-cover shrink-0" />
-                : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-sky-500/20 text-2xl font-bold text-sky-300">{selectedBook.name[0]}</div>
-              }
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-white">{selectedBook.name}</p>
-                <p className="text-sm text-slate-400">{selectedBook.author}</p>
-                <p className="mt-2 text-xs text-slate-500">{selectedBook.totalPages} páginas</p>
-                <p className="text-xs text-slate-500">
-                  Início: {new Date(selectedBook.startDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                </p>
-                {selectedBook.finishDate && (
-                  <p className="text-xs text-emerald-400">
-                    Finalizado: {new Date(selectedBook.finishDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                  </p>
-                )}
-                {selectedBook.rating != null && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-yellow-400">
-                    <Star size={11} className="fill-yellow-400" /> {selectedBook.rating}/10
-                  </p>
-                )}
-              </div>
+            <Field label="Nome do livro *">
+              <input className={inputCls} value={editName} onChange={e => setEditName(e.target.value)} placeholder="Ex: O Hobbit" />
+            </Field>
+            <Field label="Autor">
+              <AuthorSelect value={editAuthor} onChange={setEditAuthor} authors={authorList} />
+            </Field>
+            <Field label="Gêneros">
+              <BookGenreMultiSelect selected={editGenres} onChange={setEditGenres} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Número de páginas *">
+                <input className={inputCls} type="number" min={1} value={editPages} onChange={e => setEditPages(e.target.value)} placeholder="320" />
+              </Field>
+              <Field label="Data de início">
+                <input className={inputCls} type="date" value={editStart} onChange={e => setEditStart(e.target.value)} />
+              </Field>
             </div>
+            <Field label="Status">
+              <select className={inputCls} value={editStatus} onChange={e => setEditStatus(e.target.value as 'reading' | 'finished')}>
+                <option value="reading">Lendo</option>
+                <option value="finished">Finalizado</option>
+              </select>
+            </Field>
+            {editStatus === 'finished' && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Data de finalização">
+                  <input className={inputCls} type="date" value={editFinish} onChange={e => setEditFinish(e.target.value)} />
+                </Field>
+                <Field label="Nota (0–10)">
+                  <input className={inputCls} type="number" min={0} max={10} step={0.5}
+                    value={editRating} onChange={e => setEditRating(e.target.value)} placeholder="8.5" />
+                </Field>
+              </div>
+            )}
+            <Field label="URL da capa (opcional)">
+              <input className={inputCls} value={editCover} onChange={e => setEditCover(e.target.value)} placeholder="https://..." />
+            </Field>
 
-            {/* Progress */}
-            {selectedBook.status === 'reading' && (
-              <div>
-                <div className="mb-1 flex justify-between text-xs text-slate-500">
-                  <span>Progresso</span>
-                  <span>{pagesByBook[selectedBook.id] ?? 0} / {selectedBook.totalPages} pág.</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-                  <div className="h-full bg-sky-500 transition-all"
-                    style={{ width: `${Math.min((pagesByBook[selectedBook.id] ?? 0) / selectedBook.totalPages * 100, 100)}%` }} />
+            {/* Sessions list */}
+            {sessions.filter(s => s.bookId === selectedBook.id).length > 0 && (
+              <div className="border-t border-white/5 pt-4">
+                <p className="mb-2 text-xs font-medium text-slate-500">Sessões de leitura</p>
+                <div className="max-h-32 overflow-y-auto space-y-1.5">
+                  {sessions.filter(s => s.bookId === selectedBook.id)
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map(s => (
+                      <div key={s.id} className="flex items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2">
+                        <span className="text-xs text-slate-400">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                        <span className="text-xs font-medium text-white">{s.pagesRead} pág.</span>
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
 
-            {/* Sessions */}
-            <div>
-              <p className="mb-2 text-xs font-medium text-slate-500">Sessões de leitura</p>
-              <div className="max-h-36 overflow-y-auto space-y-1.5">
-                {sessions.filter(s => s.bookId === selectedBook.id)
-                  .sort((a, b) => b.date.localeCompare(a.date))
-                  .map(s => (
-                    <div key={s.id} className="flex items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2">
-                      <span className="text-xs text-slate-400">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                      <span className="text-xs font-medium text-white">{s.pagesRead} pág.</span>
-                    </div>
-                  ))}
-                {sessions.filter(s => s.bookId === selectedBook.id).length === 0 && (
-                  <p className="text-xs text-slate-600 text-center py-2">Nenhuma sessão registrada.</p>
-                )}
-              </div>
-            </div>
-
             <div className="flex gap-2 pt-1">
-              {selectedBook.status === 'reading' && (
-                <>
-                  <button onClick={() => { setSsBook(selectedBook.id); setModal('addSession'); }}
-                    className="flex-1 rounded-2xl border border-sky-500/30 bg-sky-500/10 py-2 text-xs font-medium text-sky-300 hover:bg-sky-500/20 transition">
-                    + Sessão
-                  </button>
-                  <button onClick={() => openFinish(selectedBook.id)}
-                    className="flex-1 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition">
-                    Finalizar
-                  </button>
-                </>
+              {editStatus === 'reading' && (
+                <button onClick={() => { setSsBook(selectedBook.id); setModal('addSession'); }}
+                  className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 hover:bg-sky-500/20 transition">
+                  + Sessão
+                </button>
               )}
+              <button onClick={handleEditBook} disabled={!editName || !editPages || editSaving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/15 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/25 disabled:opacity-50">
+                {editSaving ? 'Salvando...' : <><Check size={14} /> Salvar alterações</>}
+              </button>
               <button onClick={() => handleDeleteBook(selectedBook.id)}
-                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition">
-                <Trash2 size={13} />
+                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition">
+                <Trash2 size={14} />
               </button>
             </div>
           </div>

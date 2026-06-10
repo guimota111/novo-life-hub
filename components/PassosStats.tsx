@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { collection, doc, getDocs, getDoc, setDoc, query, where, documentId } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -162,12 +162,8 @@ export default function PassosStats() {
     if (!user) return;
     setLoading(true);
     try {
-      const yearStart = `${new Date().getFullYear()}-01-01`;
       const [logsSnap, goalsSnap, tokenSnap] = await Promise.all([
-        getDocs(query(
-          collection(db, 'users', user.uid, 'daily_logs'),
-          where(documentId(), '>=', yearStart)
-        )),
+        getDocs(collection(db, 'users', user.uid, 'daily_logs')),
         getDoc(doc(db, 'users', user.uid, 'settings', 'goals')),
         getDoc(doc(db, 'health_tokens', user.uid)),
       ]);
@@ -190,6 +186,19 @@ export default function PassosStats() {
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(
+      doc(db, 'users', user.uid, 'daily_logs', getTodayStr()),
+      snap => {
+        if (snap.exists()) {
+          setAllData(prev => ({ ...prev, [getTodayStr()]: snap.data() as DayData }));
+        }
+      }
+    );
+    return () => unsub();
+  }, [user]);
 
   // ── today ──────────────────────────────────────────────────────────────────
   const todaySteps = allData[todayStr]?.steps ?? 0;

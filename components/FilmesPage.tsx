@@ -17,6 +17,7 @@ interface Movie {
   id: string;
   name: string;
   director: string;
+  genres: string[];
   coverUrl?: string;
   durationMinutes: number;
   watchDate?: string;    // YYYY-MM-DD
@@ -25,14 +26,22 @@ interface Movie {
   status: 'watchlist' | 'watched';
 }
 
-type ModalType = null | 'addMovie' | 'watchMovie' | 'movieDetail';
+type ModalType = null | 'addMovie' | 'watchMovie' | 'editMovie';
 type TlScale   = 'month' | 'quarter' | 'year' | 'all';
 type StatView  = 'week' | 'month' | 'year';
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── constants ────────────────────────────────────────────────────────────────
+
+const GENRES = [
+  'Ação', 'Aventura', 'Animação', 'Comédia', 'Crime', 'Documentário',
+  'Drama', 'Fantasia', 'Ficção Científica', 'Terror', 'Suspense', 'Thriller',
+  'Romance', 'Musical', 'Biografia', 'Histórico', 'Guerra', 'Mistério', 'Western',
+];
 
 const MONTHS_PT    = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function todayStr() {
   const d = new Date();
@@ -64,7 +73,6 @@ function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allMo
   if (scale === 'year') {
     return { start: new Date(tlYear, 0, 1), end: new Date(tlYear, 11, 31) };
   }
-  // all
   const watchDates = allMovies.filter(m => m.watchDate).map(m => parseDate(m.watchDate!));
   const earliest = watchDates.length ? new Date(Math.min(...watchDates.map(d => d.getTime()))) : now;
   return { start: earliest, end: now };
@@ -128,7 +136,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
@@ -149,6 +157,75 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-violet-500/50 focus:bg-white/8 transition';
+
+// ─── DirectorSelect ───────────────────────────────────────────────────────────
+
+function DirectorSelect({ value, onChange, directors }: {
+  value: string;
+  onChange: (v: string) => void;
+  directors: string[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(
+    () => directors.filter(d => d.toLowerCase().includes(value.toLowerCase())),
+    [directors, value]
+  );
+
+  return (
+    <div className="relative">
+      <input
+        className={inputCls}
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Ex: Christopher Nolan"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-[#0d1b2a] py-1 shadow-xl">
+          {filtered.map(d => (
+            <button key={d} type="button"
+              className="w-full px-3 py-2 text-left text-sm text-slate-300 hover:bg-white/5 transition"
+              onMouseDown={() => { onChange(d); setOpen(false); }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── GenreMultiSelect ─────────────────────────────────────────────────────────
+
+function GenreMultiSelect({ selected, onChange }: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  function toggle(genre: string) {
+    onChange(selected.includes(genre)
+      ? selected.filter(g => g !== genre)
+      : [...selected, genre]
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {GENRES.map(genre => (
+        <button key={genre} type="button"
+          onClick={() => toggle(genre)}
+          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition border ${
+            selected.includes(genre)
+              ? 'border-violet-500/50 bg-violet-500/20 text-violet-300'
+              : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20 hover:text-slate-300'
+          }`}>
+          {genre}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -175,6 +252,7 @@ export default function FilmesPage() {
   // ── add movie form ──
   const [mvName,     setMvName]     = useState('');
   const [mvDirector, setMvDirector] = useState('');
+  const [mvGenres,   setMvGenres]   = useState<string[]>([]);
   const [mvCover,    setMvCover]    = useState('');
   const [mvDuration, setMvDuration] = useState('');
   const [mvStatus,   setMvStatus]   = useState<'watchlist' | 'watched'>('watched');
@@ -187,13 +265,27 @@ export default function FilmesPage() {
   const [wtRating, setWtRating] = useState('');
   const [wtSaving, setWtSaving] = useState(false);
 
+  // ── edit movie form ──
+  const [editName,     setEditName]     = useState('');
+  const [editDirector, setEditDirector] = useState('');
+  const [editGenres,   setEditGenres]   = useState<string[]>([]);
+  const [editCover,    setEditCover]    = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [editStatus,   setEditStatus]   = useState<'watchlist' | 'watched'>('watched');
+  const [editDate,     setEditDate]     = useState('');
+  const [editRating,   setEditRating]   = useState('');
+  const [editSaving,   setEditSaving]   = useState(false);
+
   // ── load ──────────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'users', user.uid, 'movies'));
-      setMovies(snap.docs.map(d => ({ id: d.id, ...d.data() } as Movie)));
+      setMovies(snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, genres: data.genres ?? [] } as Movie;
+      }));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [user]);
@@ -208,6 +300,11 @@ export default function FilmesPage() {
 
   const watchedMovies = useMemo(
     () => movies.filter(m => m.status === 'watched'),
+    [movies]
+  );
+
+  const directorList = useMemo(
+    () => [...new Set(movies.map(m => m.director).filter(Boolean))].sort(),
     [movies]
   );
 
@@ -310,6 +407,7 @@ export default function FilmesPage() {
       const ref = await addDoc(collection(db, 'users', user.uid, 'movies'), {
         name: mvName,
         director: mvDirector,
+        genres: mvGenres,
         coverUrl: mvCover || null,
         durationMinutes: Number(mvDuration),
         addedDate: todayStr(),
@@ -322,6 +420,7 @@ export default function FilmesPage() {
         id: ref.id,
         name: mvName,
         director: mvDirector,
+        genres: mvGenres,
         coverUrl: mvCover || undefined,
         durationMinutes: Number(mvDuration),
         addedDate: todayStr(),
@@ -330,9 +429,43 @@ export default function FilmesPage() {
         rating: mvStatus === 'watched' && mvRating ? Number(mvRating) : undefined,
       }]);
       setModal(null);
-      setMvName(''); setMvDirector(''); setMvCover(''); setMvDuration('');
+      setMvName(''); setMvDirector(''); setMvGenres([]); setMvCover(''); setMvDuration('');
       setMvStatus('watched'); setMvDate(todayStr()); setMvRating('');
     } finally { setMvSaving(false); }
+  }
+
+  async function handleEditMovie() {
+    if (!user || !selectedMovieId || !editName || !editDuration) return;
+    setEditSaving(true);
+    try {
+      const updates = {
+        name: editName,
+        director: editDirector,
+        genres: editGenres,
+        coverUrl: editCover || null,
+        durationMinutes: Number(editDuration),
+        status: editStatus,
+        watchDate: editStatus === 'watched' ? editDate : null,
+        rating: editStatus === 'watched' && editRating ? Number(editRating) : null,
+      };
+      await updateDoc(doc(db, 'users', user.uid, 'movies', selectedMovieId), updates);
+      setMovies(prev => prev.map(m =>
+        m.id === selectedMovieId
+          ? {
+              ...m,
+              name: editName,
+              director: editDirector,
+              genres: editGenres,
+              coverUrl: editCover || undefined,
+              durationMinutes: Number(editDuration),
+              status: editStatus,
+              watchDate: editStatus === 'watched' ? editDate : undefined,
+              rating: editStatus === 'watched' && editRating ? Number(editRating) : undefined,
+            }
+          : m
+      ));
+      setModal(null);
+    } finally { setEditSaving(false); }
   }
 
   async function handleWatchMovie() {
@@ -361,9 +494,17 @@ export default function FilmesPage() {
     setModal(null);
   }
 
-  function openDetail(movie: Movie) {
+  function openEdit(movie: Movie) {
     setSelectedMovieId(movie.id);
-    setModal('movieDetail');
+    setEditName(movie.name);
+    setEditDirector(movie.director);
+    setEditGenres(movie.genres ?? []);
+    setEditCover(movie.coverUrl ?? '');
+    setEditDuration(String(movie.durationMinutes));
+    setEditStatus(movie.status);
+    setEditDate(movie.watchDate ?? todayStr());
+    setEditRating(movie.rating != null ? String(movie.rating) : '');
+    setModal('editMovie');
   }
 
   function openWatch(movieId: string) {
@@ -406,12 +547,21 @@ export default function FilmesPage() {
                   : <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md bg-violet-500/20 text-base font-bold text-violet-300">{movie.name[0]}</div>
                 }
                 <div className="flex-1 min-w-0">
-                  <button onClick={() => openDetail(movie)}
+                  <button onClick={() => openEdit(movie)}
                     className="text-sm font-medium text-white hover:text-violet-300 transition truncate block text-left">
                     {movie.name}
                   </button>
                   <p className="text-xs text-slate-500 truncate">{movie.director}</p>
-                  <p className="text-xs text-slate-600">{fmtDuration(movie.durationMinutes)}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-slate-600">{fmtDuration(movie.durationMinutes)}</p>
+                    {(movie.genres ?? []).length > 0 && (
+                      <div className="flex gap-1 flex-wrap">
+                        {(movie.genres ?? []).slice(0, 2).map(g => (
+                          <span key={g} className="rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-400">{g}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <button onClick={() => openWatch(movie.id)}
                   className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/20">
@@ -476,7 +626,7 @@ export default function FilmesPage() {
               {moviesInTimeline.map(({ movie, pct }) => (
                 <div key={movie.id} className="flex items-center gap-2" style={{ height: 36 }}>
                   {/* Label */}
-                  <button onClick={() => openDetail(movie)}
+                  <button onClick={() => openEdit(movie)}
                     className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate hover:text-violet-300 transition pr-2">
                     {movie.name}
                   </button>
@@ -486,7 +636,7 @@ export default function FilmesPage() {
                       style={{ left: `${pct}%`, transform: 'translateX(-50%) translateY(-50%)' }}>
                       <button
                         className="block h-4 w-4 rounded-full bg-violet-500/70 border-2 border-violet-400/50 hover:bg-violet-400 hover:scale-125 transition"
-                        onClick={() => openDetail(movie)}
+                        onClick={() => openEdit(movie)}
                       />
                       {/* Tooltip */}
                       <div className="pointer-events-none absolute z-30 opacity-0 group-hover/dot:opacity-100 transition-opacity"
@@ -612,14 +762,20 @@ export default function FilmesPage() {
             {[...watchedThisYear]
               .sort((a, b) => (b.watchDate ?? '').localeCompare(a.watchDate ?? ''))
               .map(movie => (
-                <div key={movie.id} className="flex items-center gap-3">
+                <button key={movie.id} onClick={() => openEdit(movie)}
+                  className="flex w-full items-center gap-3 rounded-2xl p-1.5 transition hover:bg-white/5 text-left">
                   {movie.coverUrl
                     ? <img src={movie.coverUrl} alt="" className="h-10 w-7 rounded object-cover shrink-0" />
                     : <div className="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-violet-500/20 text-sm font-bold text-violet-300">{movie.name[0]}</div>
                   }
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{movie.name}</p>
-                    <p className="text-xs text-slate-500 truncate">{movie.director}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs text-slate-500 truncate">{movie.director}</p>
+                      {(movie.genres ?? []).slice(0, 2).map(g => (
+                        <span key={g} className="rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[9px] text-violet-400">{g}</span>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[10px] text-slate-600">{fmtDuration(movie.durationMinutes)}</span>
@@ -635,7 +791,7 @@ export default function FilmesPage() {
                       </span>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
           </div>
         )}
@@ -654,7 +810,10 @@ export default function FilmesPage() {
               <input className={inputCls} value={mvName} onChange={e => setMvName(e.target.value)} placeholder="Ex: Interestelar" />
             </Field>
             <Field label="Diretor">
-              <input className={inputCls} value={mvDirector} onChange={e => setMvDirector(e.target.value)} placeholder="Ex: Christopher Nolan" />
+              <DirectorSelect value={mvDirector} onChange={setMvDirector} directors={directorList} />
+            </Field>
+            <Field label="Gêneros">
+              <GenreMultiSelect selected={mvGenres} onChange={setMvGenres} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Duração (minutos) *">
@@ -710,46 +869,51 @@ export default function FilmesPage() {
         </Modal>
       )}
 
-      {modal === 'movieDetail' && selectedMovie && (
-        <Modal title={selectedMovie.name} onClose={() => setModal(null)}>
+      {modal === 'editMovie' && selectedMovie && (
+        <Modal title="Editar Filme" onClose={() => setModal(null)}>
           <div className="space-y-4">
-            <div className="flex gap-4">
-              {selectedMovie.coverUrl
-                ? <img src={selectedMovie.coverUrl} alt="" className="h-24 w-16 rounded-lg object-cover shrink-0" />
-                : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 text-2xl font-bold text-violet-300">{selectedMovie.name[0]}</div>
-              }
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-white">{selectedMovie.name}</p>
-                {selectedMovie.director && <p className="text-sm text-slate-400">{selectedMovie.director}</p>}
-                <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
-                  <Clock size={11} /> {fmtDuration(selectedMovie.durationMinutes)}
-                </p>
-                {selectedMovie.status === 'watched' && selectedMovie.watchDate && (
-                  <p className="text-xs text-emerald-400">
-                    Assistido em {new Date(selectedMovie.watchDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                  </p>
-                )}
-                {selectedMovie.status === 'watchlist' && (
-                  <p className="mt-1 text-xs text-violet-400">Na watchlist</p>
-                )}
-                {selectedMovie.rating != null && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-yellow-400">
-                    <Star size={11} className="fill-yellow-400" /> {selectedMovie.rating}/10
-                  </p>
-                )}
-              </div>
+            <Field label="Nome do filme *">
+              <input className={inputCls} value={editName} onChange={e => setEditName(e.target.value)} placeholder="Ex: Interestelar" />
+            </Field>
+            <Field label="Diretor">
+              <DirectorSelect value={editDirector} onChange={setEditDirector} directors={directorList} />
+            </Field>
+            <Field label="Gêneros">
+              <GenreMultiSelect selected={editGenres} onChange={setEditGenres} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Duração (minutos) *">
+                <input className={inputCls} type="number" min={1} value={editDuration} onChange={e => setEditDuration(e.target.value)} placeholder="169" />
+              </Field>
+              <Field label="Status">
+                <select className={inputCls} value={editStatus} onChange={e => setEditStatus(e.target.value as 'watchlist' | 'watched')}>
+                  <option value="watched">Já assistido</option>
+                  <option value="watchlist">Watchlist</option>
+                </select>
+              </Field>
             </div>
-
+            {editStatus === 'watched' && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Data assistido">
+                  <input className={inputCls} type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
+                </Field>
+                <Field label="Nota (0–10)">
+                  <input className={inputCls} type="number" min={0} max={10} step={0.5}
+                    value={editRating} onChange={e => setEditRating(e.target.value)} placeholder="8.5" />
+                </Field>
+              </div>
+            )}
+            <Field label="URL da capa (opcional)">
+              <input className={inputCls} value={editCover} onChange={e => setEditCover(e.target.value)} placeholder="https://..." />
+            </Field>
             <div className="flex gap-2 pt-1">
-              {selectedMovie.status === 'watchlist' && (
-                <button onClick={() => openWatch(selectedMovie.id)}
-                  className="flex-1 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition">
-                  Marcar como assistido
-                </button>
-              )}
+              <button onClick={handleEditMovie} disabled={!editName || !editDuration || editSaving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-violet-500/30 bg-violet-500/15 py-2.5 text-sm font-medium text-violet-300 transition hover:bg-violet-500/25 disabled:opacity-50">
+                {editSaving ? 'Salvando...' : <><Check size={14} /> Salvar alterações</>}
+              </button>
               <button onClick={() => handleDeleteMovie(selectedMovie.id)}
-                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition">
-                <Trash2 size={13} />
+                className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition">
+                <Trash2 size={14} />
               </button>
             </div>
           </div>

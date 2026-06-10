@@ -53,11 +53,11 @@ async function processAndWrite(userId: string, metrics: Metric[]): Promise<numbe
       if (!byDate[date]) byDate[date] = {};
 
       if (metric.name === 'step_count') {
-        byDate[date].steps = Math.round(entry.qty);
+        byDate[date].steps = (byDate[date].steps ?? 0) + Math.round(entry.qty);
       } else if (metric.name === 'walking_running_distance') {
         let km = entry.qty;
         if (metric.units === 'mi') km = km * 1.60934;
-        byDate[date].walking_distance_km = Math.round(km * 100) / 100;
+        byDate[date].walking_distance_km = Math.round(((byDate[date].walking_distance_km ?? 0) + km) * 100) / 100;
       }
     }
   }

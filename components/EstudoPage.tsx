@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  collection, doc, getDocs, addDoc, deleteDoc, Timestamp,
+  collection, doc, getDocs, addDoc, deleteDoc, setDoc, increment, Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -354,6 +354,9 @@ export default function EstudoPage() {
         date: ssDate, durationMinutes: Number(ssDuration),
         notes: ssNotes || null, createdAt: Timestamp.now(),
       });
+      await setDoc(doc(db, 'users', user.uid, 'daily_logs', ssDate), {
+        study_minutes: increment(Number(ssDuration)), updatedAt: new Date(),
+      }, { merge: true });
       setSessions(prev => [...prev, {
         id: ref.id, areaId: ssArea, subArea: ssSubArea, topic: ssTopic,
         date: ssDate, durationMinutes: Number(ssDuration),
