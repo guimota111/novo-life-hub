@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
   LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
-  Footprints, GraduationCap, Menu, Wind,
+  Footprints, GraduationCap, Menu, Wind, BarChart2,
 } from 'lucide-react';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -25,6 +25,7 @@ const navItems = [
   { label: 'Creatina',          href: '/creatina',   icon: Pill },
   { label: 'Calendário',        href: '/calendario', icon: Calendar },
   { label: 'Recordes',          href: '/recordes',   icon: Trophy },
+  { label: 'Relatórios',        href: '/relatorios', icon: BarChart2 },
 ];
 
 // Bottom bar shows 4 primary items + Menu button
