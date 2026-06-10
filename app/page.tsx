@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import {
   Droplet, Footprints, BookOpen, Dumbbell, Pill, GraduationCap,
-  Settings, Check, X, Flame, Wind,
+  Settings, Check, X, Flame, Wind, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -64,11 +64,11 @@ const emptyDay = (): DailyData => ({
   gym_done: false, creatine_done: false, study_minutes: 0, meditation_minutes: 0,
 });
 
-const getWeekDates = (): string[] => {
+const getWeekDates = (offsetWeeks = 0): string[] => {
   const today = new Date();
   const dow = today.getDay();
   const monday = new Date(today);
-  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1) + offsetWeeks * 7);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -126,11 +126,91 @@ function QuickAdd({
   );
 }
 
+// ── Streak badge ─────────────────────────────────────────────────────────────
+
+function StreakBadge({ count, capped }: { count: number; capped: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${count > 0 ? 'text-orange-300' : 'text-slate-600'}`}>
+      <Flame size={12} className={count > 0 ? 'text-orange-400' : 'text-slate-600'} />
+      {count}{capped ? '+' : ''} {count === 1 ? 'dia' : 'dias'}
+    </span>
+  );
+}
+
+// ── Delta vs período anterior ────────────────────────────────────────────────
+
+function DeltaVs({
+  current, prev, fmtAbs, vs, showPct = false,
+}: {
+  current: number;
+  prev: number;
+  fmtAbs: (n: number) => string;
+  vs: string;
+  showPct?: boolean;
+}) {
+  const diff = current - prev;
+  if (prev === 0 && current === 0) {
+    return <span className="inline-flex items-center gap-1 text-[11px] text-slate-600"><Minus size={11} /> sem dados vs {vs}</span>;
+  }
+  if (diff === 0) {
+    return <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><Minus size={11} /> = {vs}</span>;
+  }
+  const up = diff > 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  const pctTxt = showPct && prev > 0 ? ` (${up ? '+' : '−'}${Math.abs(Math.round((diff / prev) * 100))}%)` : '';
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] ${up ? 'text-emerald-400' : 'text-rose-400'}`}>
+      <Icon size={11} />
+      {up ? '+' : '−'}{fmtAbs(Math.abs(diff))}{pctTxt} vs {vs}
+    </span>
+  );
+}
+
+// ── Habit row (card HOJE) ────────────────────────────────────────────────────
+
+function HabitRow({
+  icon: Icon, iconColor, bubbleBg, barColor, label,
+  valueNode, pctVal, streak, yesterdayNode, controls,
+}: {
+  icon: React.ElementType;
+  iconColor: string;
+  bubbleBg: string;
+  barColor: string;
+  label: string;
+  valueNode: React.ReactNode;
+  pctVal: number;
+  streak: { count: number; capped: boolean };
+  yesterdayNode: React.ReactNode;
+  controls?: React.ReactNode;
+}) {
+  return (
+    <div className="py-4 first:pt-0 last:pb-0">
+      <div className="flex items-center gap-4">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${bubbleBg}`}>
+          <Icon size={18} className={iconColor} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-2">
+            <span className="font-semibold text-white">{label}</span>
+            {valueNode}
+          </div>
+          <ProgressBar value={pctVal} goal={100} color={barColor} />
+        </div>
+        <div className="flex w-24 shrink-0 flex-col items-end gap-1 sm:w-32">
+          <StreakBadge count={streak.count} capped={streak.capped} />
+          {yesterdayNode}
+        </div>
+      </div>
+      {controls && <div className="mt-3 pl-14">{controls}</div>}
+    </div>
+  );
+}
+
 // ── Week bar chart component ──────────────────────────────────────────────────
 
 function WeekBarChart({
   label, icon: Icon, iconColor, fullCls, partialCls,
-  weekDates, today, getDayValue, goal, formatTotal,
+  weekDates, today, getDayValue, goal, formatTotal, prevTotal,
 }: {
   label: string;
   icon: React.ElementType;
@@ -142,6 +222,7 @@ function WeekBarChart({
   getDayValue: (dateKey: string) => number;
   goal: number;
   formatTotal: (v: number) => string;
+  prevTotal?: number;
 }) {
   const BAR_H = 80;
   const vals = weekDates.map(getDayValue);
@@ -150,10 +231,15 @@ function WeekBarChart({
 
   return (
     <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-1 flex items-center gap-2">
         <Icon size={14} className={iconColor} />
         <span className="text-sm font-medium text-slate-200">{label}</span>
         <span className="ml-auto text-xs text-slate-400">{formatTotal(total)}</span>
+      </div>
+      <div className="mb-3 text-right">
+        {prevTotal !== undefined && (
+          <DeltaVs current={total} prev={prevTotal} fmtAbs={formatTotal} vs="semana passada" showPct />
+        )}
       </div>
       <div className="relative mb-1" style={{ height: `${BAR_H}px` }}>
         <div
@@ -263,6 +349,7 @@ export default function Page() {
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [todayData, setTodayData] = useState<DailyData>(emptyDay());
   const [weekData, setWeekData] = useState<Record<string, DailyData>>({});
+  const [lastWeekData, setLastWeekData] = useState<Record<string, DailyData>>({});
   const [monthData, setMonthData] = useState<Record<string, DailyData>>({});
   const [yearData, setYearData] = useState<Record<string, DailyData>>({});
   const [monthFetched, setMonthFetched] = useState(false);
@@ -307,10 +394,11 @@ export default function Page() {
       if (snap.exists()) setGoals({ ...DEFAULT_GOALS, ...(snap.data() as Partial<Goals>) });
     });
     fetchDates(getWeekDates()).then(setWeekData);
+    fetchDates(getWeekDates(-1)).then(setLastWeekData);
     return () => unsub();
   }, [user, fetchDates]);
 
-  // Load month data eagerly — includes previous month for creatine streak accuracy
+  // Load month data eagerly — includes previous month for streaks and comparisons
   useEffect(() => {
     if (monthFetched || !user) return;
     const now = new Date();
@@ -342,22 +430,12 @@ export default function Page() {
   const addWater = (ml: number) => writeLog(getTodayStr(), { water_ml: fsIncrement(ml) });
   const subtractWater = () => writeLog(getTodayStr(), { water_ml: Math.max(0, todayData.water_ml - 250) });
   const toggleCreatine = () => writeLog(getTodayStr(), { creatine_done: !todayData.creatine_done });
-
-  const toggleGym = async (dateKey: string) => {
-    const current = dateKey === getTodayStr()
-      ? todayData.gym_done
-      : (monthData[dateKey]?.gym_done ?? weekData[dateKey]?.gym_done ?? false);
-    await writeLog(dateKey, { gym_done: !current });
-    if (dateKey !== getTodayStr()) {
-      const updated = { ...emptyDay(), gym_done: !current };
-      setMonthData(prev => ({ ...prev, [dateKey]: { ...emptyDay(), ...prev[dateKey], gym_done: !current } }));
-      setWeekData(prev => ({ ...prev, [dateKey]: { ...emptyDay(), ...prev[dateKey], gym_done: !current } }));
-    }
-  };
+  const toggleGym = () => writeLog(getTodayStr(), { gym_done: !todayData.gym_done });
 
   // ── Computed ───────────────────────────────────────────────────────────────
 
   const weekDates = getWeekDates();
+  const lastWeekDates = getWeekDates(-1);
   const today = getTodayStr();
 
   const getDayData = (dateKey: string): DailyData =>
@@ -367,37 +445,68 @@ export default function Page() {
     d === today ? todayData.gym_done : (weekData[d]?.gym_done ?? false)
   ).length;
 
+  const habitDone = {
+    water: todayData.water_ml >= goals.water_ml,
+    steps: todayData.steps >= goals.steps,
+    reading: todayData.reading_pages >= goals.reading_pages,
+    gym: todayData.gym_done,
+    creatine: todayData.creatine_done,
+    study: todayData.study_minutes >= goals.study_minutes,
+    meditation: todayData.meditation_minutes >= goals.meditation_minutes,
+  };
+  const completedToday = Object.values(habitDone).filter(Boolean).length;
+
   const overallScore = Math.round(
     (pct(todayData.water_ml, goals.water_ml) +
       pct(todayData.steps, goals.steps) +
       pct(todayData.reading_pages, goals.reading_pages) +
-      pct(gymDaysThisWeek, goals.gym_days_per_week) +
+      (todayData.gym_done ? 100 : 0) +
       (todayData.creatine_done ? 100 : 0) +
       pct(todayData.study_minutes, goals.study_minutes) +
       pct(todayData.meditation_minutes, goals.meditation_minutes)) / 7
   );
 
-  const creatineStreak = useMemo(() => {
-    const allData = { ...monthData, [today]: todayData };
-    let count = 0;
-    const d = new Date(today + 'T12:00:00');
+  // Streaks: consecutive days with the habit completed. If today is still
+  // pending, the streak counts from yesterday backwards (doesn't reset mid-day).
+  const streaks = useMemo(() => {
+    const all: Record<string, DailyData> = { ...monthData, [today]: todayData };
     const now = new Date();
-    const dataStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    while (d >= dataStart) {
-      const k = dateStr(d);
-      if (allData[k]?.creatine_done) { count++; d.setDate(d.getDate() - 1); }
-      else break;
-    }
-    return { count, capped: d < dataStart };
-  }, [today, todayData, monthData]);
+    const dataStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 12);
+    const calc = (done: (d: DailyData) => boolean) => {
+      const d = new Date(today + 'T12:00:00');
+      if (!done(all[today] ?? emptyDay())) d.setDate(d.getDate() - 1);
+      let count = 0;
+      while (d >= dataStart) {
+        if (done(all[dateStr(d)] ?? emptyDay())) { count++; d.setDate(d.getDate() - 1); }
+        else break;
+      }
+      return { count, capped: d < dataStart };
+    };
+    return {
+      water: calc(x => x.water_ml >= goals.water_ml),
+      steps: calc(x => x.steps >= goals.steps),
+      reading: calc(x => x.reading_pages >= goals.reading_pages),
+      gym: calc(x => x.gym_done),
+      creatine: calc(x => x.creatine_done),
+      study: calc(x => x.study_minutes >= goals.study_minutes),
+      meditation: calc(x => x.meditation_minutes >= goals.meditation_minutes),
+    };
+  }, [today, todayData, monthData, goals]);
+
+  const yesterdayKey = useMemo(() => {
+    const d = new Date(today + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    return dateStr(d);
+  }, [today]);
+  const yesterdayData = monthData[yesterdayKey] ?? emptyDay();
 
   const formatDate = () =>
     new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   // ── Monthly stats helper ───────────────────────────────────────────────────
 
-  const monthlyStats = (data: Record<string, DailyData>, year: number, month: number) => {
-    const days = new Date(year, month + 1, 0).getDate();
+  const monthlyStats = (data: Record<string, DailyData>, year: number, month: number, maxDay?: number) => {
+    const days = Math.min(new Date(year, month + 1, 0).getDate(), maxDay ?? 31);
     let water = 0, steps = 0, pages = 0, gym = 0, creatine = 0, study = 0, meditation = 0, daysLogged = 0;
     for (let d = 1; d <= days; d++) {
       const k = dateStr(new Date(year, month, d));
@@ -421,6 +530,14 @@ export default function Page() {
 
   const scoreColor = overallScore >= 80 ? 'text-emerald-400' : overallScore >= 50 ? 'text-amber-400' : 'text-rose-400';
 
+  const yesterdayBool = (done: boolean) => (
+    <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+      Ontem:{done
+        ? <Check size={11} className="text-emerald-400" />
+        : <X size={11} className="text-rose-400" />}
+    </span>
+  );
+
   return (
     <main className="min-h-screen bg-[#08101a] text-slate-100">
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -435,22 +552,13 @@ export default function Page() {
                 <h1 className="text-4xl font-semibold text-white">Visão do Dia</h1>
                 <p className="mt-1 capitalize text-slate-400">{formatDate()}</p>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-3 rounded-3xl bg-slate-900/60 px-5 py-3 shadow-lg">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-3xl bg-tamagochi-500/15 text-2xl">✨</span>
-                  <div>
-                    <p className={`text-2xl font-bold ${scoreColor}`}>{overallScore}%</p>
-                    <p className="text-xs text-slate-400">Energia do dia</p>
-                  </div>
-                </div>
-                <Link
-                  href="/metas"
-                  className="flex items-center gap-2 rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300 transition hover:border-tamagochi-500/30 hover:bg-white/10"
-                >
-                  <Settings size={16} />
-                  Metas
-                </Link>
-              </div>
+              <Link
+                href="/metas"
+                className="flex items-center gap-2 self-start rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300 transition hover:border-tamagochi-500/30 hover:bg-white/10 sm:self-auto"
+              >
+                <Settings size={16} />
+                Metas
+              </Link>
             </div>
           </header>
 
@@ -470,188 +578,174 @@ export default function Page() {
 
           {/* ── HOJE ──────────────────────────────────────────────────────── */}
           {tab === 'hoje' && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl sm:p-8">
 
-              {/* Água */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Droplet className="text-blue-400" size={18} />
-                    <span className="font-semibold text-white">Água</span>
+              {/* Progresso geral do dia */}
+              <div className="mb-6 border-b border-white/5 pb-6">
+                <div className="mb-3 flex items-end justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-tamagochi-300">Progresso de hoje</p>
+                    <p className="mt-1 text-sm text-slate-400">{completedToday} de 7 hábitos completos</p>
                   </div>
-                  <span className="text-sm font-bold text-blue-400">{Math.round(pct(todayData.water_ml, goals.water_ml))}%</span>
+                  <p className={`text-4xl font-bold ${scoreColor}`}>{overallScore}%</p>
                 </div>
-                <p className="mb-2 text-2xl font-bold text-white">
-                  {fmtNum(todayData.water_ml)} <span className="text-base font-normal text-slate-400">/ {fmtNum(goals.water_ml)} ml</span>
-                </p>
-                <ProgressBar value={todayData.water_ml} goal={goals.water_ml} color="bg-blue-500" />
-                <div className="mt-4 space-y-2">
-                  <QuickAdd
-                    options={[{ label: '250ml', value: 250 }, { label: '500ml', value: 500 }, { label: '750ml', value: 750 }, { label: '1L', value: 1000 }]}
-                    onAdd={addWater}
-                    disabled={busy}
-                    label="+"
+                <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-tamagochi-500 to-emerald-400 transition-all duration-500"
+                    style={{ width: `${overallScore}%` }}
                   />
-                  <button
-                    onClick={subtractWater}
-                    disabled={busy || todayData.water_ml === 0}
-                    className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-blue-500/30 hover:text-blue-300 disabled:opacity-30"
-                  >
-                    −250ml
-                  </button>
                 </div>
               </div>
 
-              {/* Passos — sem botões, sincronizado automaticamente */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Footprints className="text-emerald-400" size={18} />
-                    <span className="font-semibold text-white">Passos</span>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-400">{Math.round(pct(todayData.steps, goals.steps))}%</span>
-                </div>
-                <p className="mb-2 text-2xl font-bold text-white">
-                  {fmtNum(todayData.steps)} <span className="text-base font-normal text-slate-400">/ {fmtNum(goals.steps)}</span>
-                </p>
-                <ProgressBar value={todayData.steps} goal={goals.steps} color="bg-emerald-500" />
-                <p className="mt-3 text-xs text-slate-500">Sincronizado automaticamente</p>
-              </div>
+              <div className="divide-y divide-white/5">
 
-              {/* Leitura — sincronizada via sessões */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="text-amber-400" size={18} />
-                    <span className="font-semibold text-white">Leitura</span>
-                  </div>
-                  <span className="text-sm font-bold text-amber-400">{Math.round(pct(todayData.reading_pages, goals.reading_pages))}%</span>
-                </div>
-                <p className="mb-2 text-2xl font-bold text-white">
-                  {todayData.reading_pages} <span className="text-base font-normal text-slate-400">/ {goals.reading_pages} páginas</span>
-                </p>
-                <ProgressBar value={todayData.reading_pages} goal={goals.reading_pages} color="bg-amber-500" />
-                <p className="mt-3 text-xs text-slate-500">Atualizado via sessões de leitura</p>
-              </div>
-
-              {/* Academia — heatmap do mês */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Dumbbell className="text-rose-400" size={18} />
-                    <span className="font-semibold text-white">Academia</span>
-                  </div>
-                  <span className="text-sm font-bold text-rose-400">{gymDaysThisWeek}/{goals.gym_days_per_week} esta semana</span>
-                </div>
-                <ProgressBar value={gymDaysThisWeek} goal={goals.gym_days_per_week} color="bg-rose-500" />
-                <div className="mt-4">
-                  {!monthFetched ? (
-                    <div className="h-20 animate-pulse rounded-xl bg-slate-900/40" />
-                  ) : (() => {
-                    const now = new Date();
-                    const year = now.getFullYear();
-                    const month = now.getMonth();
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const firstDow = new Date(year, month, 1).getDay();
-                    const offset = firstDow === 0 ? 6 : firstDow - 1;
-                    return (
-                      <div className="grid grid-cols-7 gap-1">
-                        {Array.from({ length: offset }).map((_, i) => <div key={`e-${i}`} />)}
-                        {Array.from({ length: daysInMonth }, (_, i) => {
-                          const k = dateStr(new Date(year, month, i + 1));
-                          const isFuture = k > today;
-                          const done = k === today ? todayData.gym_done : (monthData[k]?.gym_done ?? false);
-                          const isToday = k === today;
-                          return (
-                            <button
-                              key={k}
-                              onClick={() => !isFuture && toggleGym(k)}
-                              disabled={isFuture || busy}
-                              className={[
-                                'h-5 flex items-start p-0.5 rounded-sm transition',
-                                isToday ? 'ring-1 ring-white/30 ring-offset-1 ring-offset-[#08101a]' : '',
-                                isFuture ? 'cursor-default bg-slate-900/20' :
-                                done ? 'bg-rose-500/70 hover:bg-rose-500/90' :
-                                'bg-slate-900/50 hover:bg-rose-500/20',
-                              ].join(' ')}
-                            >
-                              <span className={`text-[7px] leading-none font-medium ${
-                                isFuture ? 'text-slate-700' : done ? 'text-white/70' : 'text-slate-600'
-                              }`}>{i + 1}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Creatina — com sequência */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-1 flex items-center gap-2">
-                  <Pill className="text-purple-400" size={18} />
-                  <span className="font-semibold text-white">Creatina</span>
-                </div>
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="text-sm text-slate-400">1x por dia</p>
-                  {creatineStreak.count > 0 && (
-                    <div className="flex items-center gap-1.5 text-purple-300">
-                      <Flame size={13} className="text-purple-400" />
-                      <span className="text-sm font-semibold">
-                        {creatineStreak.count}{creatineStreak.capped ? '+' : ''} {creatineStreak.count === 1 ? 'dia' : 'dias'} seguidos
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={toggleCreatine}
-                  disabled={busy}
-                  className={`flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-semibold transition disabled:opacity-50
-                    ${todayData.creatine_done
-                      ? 'bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/10'
-                      : 'bg-slate-900/60 border border-white/10 text-slate-400 hover:border-purple-500/30 hover:bg-purple-900/20 hover:text-purple-300'
-                    }`}
-                >
-                  {todayData.creatine_done
-                    ? <><Check size={20} /> Tomei hoje!</>
-                    : <><X size={20} /> Ainda não tomei</>
+                {/* Água */}
+                <HabitRow
+                  icon={Droplet} iconColor="text-blue-400" bubbleBg="bg-blue-500/15" barColor="bg-blue-500"
+                  label="Água"
+                  valueNode={
+                    <span className="text-sm text-slate-400">
+                      <span className="font-bold text-white">{fmtNum(todayData.water_ml)}</span> / {fmtNum(goals.water_ml)} ml
+                      <span className="ml-2 font-bold text-blue-400">{Math.round(pct(todayData.water_ml, goals.water_ml))}%</span>
+                    </span>
                   }
-                </button>
-              </div>
+                  pctVal={pct(todayData.water_ml, goals.water_ml)}
+                  streak={streaks.water}
+                  yesterdayNode={<DeltaVs current={todayData.water_ml} prev={yesterdayData.water_ml} fmtAbs={v => `${fmtNum(v)} ml`} vs="ontem" />}
+                  controls={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <QuickAdd
+                        options={[{ label: '250ml', value: 250 }, { label: '500ml', value: 500 }, { label: '750ml', value: 750 }, { label: '1L', value: 1000 }]}
+                        onAdd={addWater}
+                        disabled={busy}
+                        label="+"
+                      />
+                      <button
+                        onClick={subtractWater}
+                        disabled={busy || todayData.water_ml === 0}
+                        className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-blue-500/30 hover:text-blue-300 disabled:opacity-30"
+                      >
+                        −250ml
+                      </button>
+                    </div>
+                  }
+                />
 
-              {/* Estudo */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <GraduationCap className="text-violet-400" size={18} />
-                    <span className="font-semibold text-white">Estudo</span>
-                  </div>
-                  <span className="text-sm font-bold text-violet-400">{Math.round(pct(todayData.study_minutes, goals.study_minutes))}%</span>
-                </div>
-                <p className="mb-2 text-2xl font-bold text-white">
-                  {fmtStudy(todayData.study_minutes)} <span className="text-base font-normal text-slate-400">/ {fmtStudy(goals.study_minutes)}</span>
-                </p>
-                <ProgressBar value={todayData.study_minutes} goal={goals.study_minutes} color="bg-violet-500" />
-                <p className="mt-3 text-xs text-slate-500">Atualizado via sessões de estudo</p>
-              </div>
+                {/* Passos — sincronizado automaticamente */}
+                <HabitRow
+                  icon={Footprints} iconColor="text-emerald-400" bubbleBg="bg-emerald-500/15" barColor="bg-emerald-500"
+                  label="Passos"
+                  valueNode={
+                    <span className="text-sm text-slate-400">
+                      <span className="font-bold text-white">{fmtNum(todayData.steps)}</span> / {fmtNum(goals.steps)}
+                      <span className="ml-2 font-bold text-emerald-400">{Math.round(pct(todayData.steps, goals.steps))}%</span>
+                    </span>
+                  }
+                  pctVal={pct(todayData.steps, goals.steps)}
+                  streak={streaks.steps}
+                  yesterdayNode={<DeltaVs current={todayData.steps} prev={yesterdayData.steps} fmtAbs={fmtNum} vs="ontem" />}
+                />
 
-              {/* Meditação */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Wind className="text-teal-400" size={18} />
-                    <span className="font-semibold text-white">Meditação</span>
-                  </div>
-                  <span className="text-sm font-bold text-teal-400">{Math.round(pct(todayData.meditation_minutes, goals.meditation_minutes))}%</span>
-                </div>
-                <p className="mb-2 text-2xl font-bold text-white">
-                  {fmtStudy(todayData.meditation_minutes)} <span className="text-base font-normal text-slate-400">/ {fmtStudy(goals.meditation_minutes)}</span>
-                </p>
-                <ProgressBar value={todayData.meditation_minutes} goal={goals.meditation_minutes} color="bg-teal-500" />
-                <p className="mt-3 text-xs text-slate-500">Atualizado via sessões de meditação</p>
-              </div>
+                {/* Leitura — atualizada via sessões de leitura */}
+                <HabitRow
+                  icon={BookOpen} iconColor="text-amber-400" bubbleBg="bg-amber-500/15" barColor="bg-amber-500"
+                  label="Leitura"
+                  valueNode={
+                    <span className="text-sm text-slate-400">
+                      <span className="font-bold text-white">{todayData.reading_pages}</span> / {goals.reading_pages} páginas
+                      <span className="ml-2 font-bold text-amber-400">{Math.round(pct(todayData.reading_pages, goals.reading_pages))}%</span>
+                    </span>
+                  }
+                  pctVal={pct(todayData.reading_pages, goals.reading_pages)}
+                  streak={streaks.reading}
+                  yesterdayNode={<DeltaVs current={todayData.reading_pages} prev={yesterdayData.reading_pages} fmtAbs={v => `${v} págs`} vs="ontem" />}
+                />
 
+                {/* Academia — só fui hoje ou não */}
+                <HabitRow
+                  icon={Dumbbell} iconColor="text-rose-400" bubbleBg="bg-rose-500/15" barColor="bg-rose-500"
+                  label="Academia"
+                  valueNode={
+                    <span className={`text-sm font-semibold ${todayData.gym_done ? 'text-rose-300' : 'text-slate-500'}`}>
+                      {todayData.gym_done ? 'Fui hoje' : 'Ainda não fui'}
+                    </span>
+                  }
+                  pctVal={todayData.gym_done ? 100 : 0}
+                  streak={streaks.gym}
+                  yesterdayNode={yesterdayBool(yesterdayData.gym_done)}
+                  controls={
+                    <button
+                      onClick={toggleGym}
+                      disabled={busy}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-50
+                        ${todayData.gym_done
+                          ? 'border border-rose-500/30 bg-rose-500/20 text-rose-300 hover:bg-rose-500/10'
+                          : 'border border-white/10 bg-slate-900/60 text-slate-400 hover:border-rose-500/30 hover:bg-rose-900/20 hover:text-rose-300'
+                        }`}
+                    >
+                      {todayData.gym_done ? <><Check size={15} /> Fui hoje!</> : <><X size={15} /> Marcar treino</>}
+                    </button>
+                  }
+                />
+
+                {/* Creatina */}
+                <HabitRow
+                  icon={Pill} iconColor="text-purple-400" bubbleBg="bg-purple-500/15" barColor="bg-purple-500"
+                  label="Creatina"
+                  valueNode={
+                    <span className={`text-sm font-semibold ${todayData.creatine_done ? 'text-purple-300' : 'text-slate-500'}`}>
+                      {todayData.creatine_done ? 'Tomei hoje' : 'Ainda não tomei'}
+                    </span>
+                  }
+                  pctVal={todayData.creatine_done ? 100 : 0}
+                  streak={streaks.creatine}
+                  yesterdayNode={yesterdayBool(yesterdayData.creatine_done)}
+                  controls={
+                    <button
+                      onClick={toggleCreatine}
+                      disabled={busy}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-50
+                        ${todayData.creatine_done
+                          ? 'border border-purple-500/30 bg-purple-500/20 text-purple-300 hover:bg-purple-500/10'
+                          : 'border border-white/10 bg-slate-900/60 text-slate-400 hover:border-purple-500/30 hover:bg-purple-900/20 hover:text-purple-300'
+                        }`}
+                    >
+                      {todayData.creatine_done ? <><Check size={15} /> Tomei hoje!</> : <><X size={15} /> Marcar creatina</>}
+                    </button>
+                  }
+                />
+
+                {/* Estudo */}
+                <HabitRow
+                  icon={GraduationCap} iconColor="text-violet-400" bubbleBg="bg-violet-500/15" barColor="bg-violet-500"
+                  label="Estudo"
+                  valueNode={
+                    <span className="text-sm text-slate-400">
+                      <span className="font-bold text-white">{fmtStudy(todayData.study_minutes)}</span> / {fmtStudy(goals.study_minutes)}
+                      <span className="ml-2 font-bold text-violet-400">{Math.round(pct(todayData.study_minutes, goals.study_minutes))}%</span>
+                    </span>
+                  }
+                  pctVal={pct(todayData.study_minutes, goals.study_minutes)}
+                  streak={streaks.study}
+                  yesterdayNode={<DeltaVs current={todayData.study_minutes} prev={yesterdayData.study_minutes} fmtAbs={fmtStudy} vs="ontem" />}
+                />
+
+                {/* Meditação */}
+                <HabitRow
+                  icon={Wind} iconColor="text-teal-400" bubbleBg="bg-teal-500/15" barColor="bg-teal-500"
+                  label="Meditação"
+                  valueNode={
+                    <span className="text-sm text-slate-400">
+                      <span className="font-bold text-white">{fmtStudy(todayData.meditation_minutes)}</span> / {fmtStudy(goals.meditation_minutes)}
+                      <span className="ml-2 font-bold text-teal-400">{Math.round(pct(todayData.meditation_minutes, goals.meditation_minutes))}%</span>
+                    </span>
+                  }
+                  pctVal={pct(todayData.meditation_minutes, goals.meditation_minutes)}
+                  streak={streaks.meditation}
+                  yesterdayNode={<DeltaVs current={todayData.meditation_minutes} prev={yesterdayData.meditation_minutes} fmtAbs={fmtStudy} vs="ontem" />}
+                />
+
+              </div>
             </div>
           )}
 
@@ -660,10 +754,19 @@ export default function Page() {
             const semStart = weekDates[0].split('-').reverse().slice(0, 2).join('/');
             const semEnd = weekDates[6].split('-').reverse().slice(0, 2).join('/');
 
+            // Compare against the same elapsed period of last week (Mon..same weekday)
+            const elapsed = weekDates.filter(d => d <= today).length;
+            const prevTotalFor = (get: (d: DailyData) => number) =>
+              lastWeekDates.slice(0, elapsed).reduce((a, k) => a + get(lastWeekData[k] ?? emptyDay()), 0);
+            const gymDaysLastWeek = lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.gym_done).length;
+            const creatineDaysThisWeek = weekDates.filter(d => getDayData(d).creatine_done).length;
+            const creatineDaysLastWeek = lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.creatine_done).length;
+            const fmtDias = (v: number) => `${v} ${v === 1 ? 'dia' : 'dias'}`;
+
             return (
               <div className="space-y-4">
                 <p className="px-1 text-sm uppercase tracking-widest text-tamagochi-300">
-                  Semana {semStart} – {semEnd}
+                  Semana {semStart} – {semEnd} · comparativo com o mesmo período da semana passada
                 </p>
 
                 {/* Quantitative habits — bar charts */}
@@ -675,6 +778,7 @@ export default function Page() {
                     getDayValue={d => getDayData(d).water_ml}
                     goal={goals.water_ml}
                     formatTotal={v => `${fmtNum(v)} ml`}
+                    prevTotal={prevTotalFor(d => d.water_ml)}
                   />
                   <WeekBarChart
                     label="Passos" icon={Footprints} iconColor="text-emerald-400"
@@ -683,6 +787,7 @@ export default function Page() {
                     getDayValue={d => getDayData(d).steps}
                     goal={goals.steps}
                     formatTotal={v => fmtNum(v)}
+                    prevTotal={prevTotalFor(d => d.steps)}
                   />
                   <WeekBarChart
                     label="Leitura" icon={BookOpen} iconColor="text-amber-400"
@@ -691,6 +796,7 @@ export default function Page() {
                     getDayValue={d => getDayData(d).reading_pages}
                     goal={goals.reading_pages}
                     formatTotal={v => `${v} págs`}
+                    prevTotal={prevTotalFor(d => d.reading_pages)}
                   />
                   <WeekBarChart
                     label="Estudo" icon={GraduationCap} iconColor="text-violet-400"
@@ -699,6 +805,7 @@ export default function Page() {
                     getDayValue={d => getDayData(d).study_minutes}
                     goal={goals.study_minutes}
                     formatTotal={fmtStudy}
+                    prevTotal={prevTotalFor(d => d.study_minutes)}
                   />
                   <WeekBarChart
                     label="Meditação" icon={Wind} iconColor="text-teal-400"
@@ -707,18 +814,22 @@ export default function Page() {
                     getDayValue={d => getDayData(d).meditation_minutes}
                     goal={goals.meditation_minutes}
                     formatTotal={fmtStudy}
+                    prevTotal={prevTotalFor(d => d.meditation_minutes)}
                   />
                 </div>
 
                 {/* Boolean habits — day strips */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-                    <div className="mb-3 flex items-center justify-between">
+                    <div className="mb-1 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Dumbbell size={14} className="text-rose-400" />
                         <span className="text-sm font-medium text-slate-200">Academia</span>
                       </div>
                       <span className="text-sm font-bold text-rose-400">{gymDaysThisWeek}/{goals.gym_days_per_week} dias</span>
+                    </div>
+                    <div className="mb-3 text-right">
+                      <DeltaVs current={gymDaysThisWeek} prev={gymDaysLastWeek} fmtAbs={fmtDias} vs="semana passada" />
                     </div>
                     <div className="mb-3 flex gap-1.5">
                       {weekDates.map((d, i) => {
@@ -745,19 +856,22 @@ export default function Page() {
                   </div>
 
                   <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-                    <div className="mb-3 flex items-center justify-between">
+                    <div className="mb-1 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Pill size={14} className="text-purple-400" />
                         <span className="text-sm font-medium text-slate-200">Creatina</span>
                       </div>
-                      {creatineStreak.count > 0 && (
+                      {streaks.creatine.count > 0 && (
                         <div className="flex items-center gap-1">
                           <Flame size={12} className="text-purple-400" />
                           <span className="text-sm font-bold text-purple-300">
-                            {creatineStreak.count}{creatineStreak.capped ? '+' : ''} dias
+                            {streaks.creatine.count}{streaks.creatine.capped ? '+' : ''} dias
                           </span>
                         </div>
                       )}
+                    </div>
+                    <div className="mb-3 text-right">
+                      <DeltaVs current={creatineDaysThisWeek} prev={creatineDaysLastWeek} fmtAbs={fmtDias} vs="semana passada" />
                     </div>
                     <div className="mb-3 flex gap-1.5">
                       {weekDates.map((d, i) => {
@@ -781,7 +895,7 @@ export default function Page() {
                       })}
                     </div>
                     <p className="text-xs text-slate-500">
-                      {weekDates.filter(d => getDayData(d).creatine_done).length} / 7 dias esta semana
+                      {creatineDaysThisWeek} / 7 dias esta semana
                     </p>
                   </div>
                 </div>
@@ -803,6 +917,14 @@ export default function Page() {
             const stats = monthlyStats(mergedMonth, year, month);
             const daysElapsed = Math.min(parseInt(today.split('-')[2]), daysInMonth);
 
+            // Same period of last month (days 1..daysElapsed)
+            const prevRef = new Date(year, month - 1, 1);
+            const prevYear = prevRef.getFullYear();
+            const prevMonth = prevRef.getMonth();
+            const prevDaysInMonth = new Date(prevYear, prevMonth + 1, 0).getDate();
+            const prevStats = monthlyStats(monthData, prevYear, prevMonth, Math.min(daysElapsed, prevDaysInMonth));
+            const fmtDias = (v: number) => `${v} ${v === 1 ? 'dia' : 'dias'}`;
+
             const firstDow = new Date(year, month, 1).getDay();
             const firstDayOffset = firstDow === 0 ? 6 : firstDow - 1;
             const heatDays = Array.from({ length: daysInMonth }, (_, i) => {
@@ -814,8 +936,11 @@ export default function Page() {
               <div className="space-y-4">
                 {/* Summary cards */}
                 <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-                  <p className="mb-6 text-sm uppercase tracking-widest text-tamagochi-300">
+                  <p className="mb-1 text-sm uppercase tracking-widest text-tamagochi-300">
                     {MONTH_PT[month]} {year} · {stats.daysLogged} dias registrados
+                  </p>
+                  <p className="mb-6 text-xs text-slate-500">
+                    Comparativo com 1–{Math.min(daysElapsed, prevDaysInMonth)} de {MONTH_PT[prevMonth]}
                   </p>
 
                   {!monthFetched ? (
@@ -823,13 +948,13 @@ export default function Page() {
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {[
-                        { label: 'Água', icon: Droplet, color: 'text-blue-400', bg: 'bg-blue-500', value: `${fmtNum(stats.water)} ml`, sub: `Média: ${fmtNum(Math.round(stats.water / Math.max(stats.daysLogged, 1)))} ml/dia`, pctVal: pct(stats.water, goals.water_ml * daysElapsed) },
-                        { label: 'Passos', icon: Footprints, color: 'text-emerald-400', bg: 'bg-emerald-500', value: fmtNum(stats.steps), sub: `Média: ${fmtNum(Math.round(stats.steps / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.steps, goals.steps * daysElapsed) },
-                        { label: 'Leitura', icon: BookOpen, color: 'text-amber-400', bg: 'bg-amber-500', value: `${stats.pages} páginas`, sub: `Média: ${(stats.pages / Math.max(stats.daysLogged, 1)).toFixed(1)}/dia`, pctVal: pct(stats.pages, goals.reading_pages * daysElapsed) },
-                        { label: 'Academia', icon: Dumbbell, color: 'text-rose-400', bg: 'bg-rose-500', value: `${stats.gym} dias`, sub: `Meta: ${Math.round(goals.gym_days_per_week * (daysElapsed / 7))} dias`, pctVal: pct(stats.gym, Math.max(1, Math.round(goals.gym_days_per_week * (daysElapsed / 7)))) },
-                        { label: 'Creatina', icon: Pill, color: 'text-purple-400', bg: 'bg-purple-500', value: `${stats.creatine} dias`, sub: `de ${daysElapsed} dias`, pctVal: pct(stats.creatine, daysElapsed) },
-                        { label: 'Estudo', icon: GraduationCap, color: 'text-violet-400', bg: 'bg-violet-500', value: fmtStudy(stats.study), sub: `Média: ${fmtStudy(Math.round(stats.study / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.study, goals.study_minutes * daysElapsed) },
-                        { label: 'Meditação', icon: Wind, color: 'text-teal-400', bg: 'bg-teal-500', value: fmtStudy(stats.meditation), sub: `Média: ${fmtStudy(Math.round(stats.meditation / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.meditation, goals.meditation_minutes * daysElapsed) },
+                        { label: 'Água', icon: Droplet, color: 'text-blue-400', bg: 'bg-blue-500', value: `${fmtNum(stats.water)} ml`, sub: `Média: ${fmtNum(Math.round(stats.water / Math.max(stats.daysLogged, 1)))} ml/dia`, pctVal: pct(stats.water, goals.water_ml * daysElapsed), cur: stats.water, prev: prevStats.water, fmtAbs: (v: number) => `${fmtNum(v)} ml` },
+                        { label: 'Passos', icon: Footprints, color: 'text-emerald-400', bg: 'bg-emerald-500', value: fmtNum(stats.steps), sub: `Média: ${fmtNum(Math.round(stats.steps / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.steps, goals.steps * daysElapsed), cur: stats.steps, prev: prevStats.steps, fmtAbs: fmtNum },
+                        { label: 'Leitura', icon: BookOpen, color: 'text-amber-400', bg: 'bg-amber-500', value: `${stats.pages} páginas`, sub: `Média: ${(stats.pages / Math.max(stats.daysLogged, 1)).toFixed(1)}/dia`, pctVal: pct(stats.pages, goals.reading_pages * daysElapsed), cur: stats.pages, prev: prevStats.pages, fmtAbs: (v: number) => `${v} págs` },
+                        { label: 'Academia', icon: Dumbbell, color: 'text-rose-400', bg: 'bg-rose-500', value: `${stats.gym} dias`, sub: `Meta: ${Math.round(goals.gym_days_per_week * (daysElapsed / 7))} dias`, pctVal: pct(stats.gym, Math.max(1, Math.round(goals.gym_days_per_week * (daysElapsed / 7)))), cur: stats.gym, prev: prevStats.gym, fmtAbs: fmtDias },
+                        { label: 'Creatina', icon: Pill, color: 'text-purple-400', bg: 'bg-purple-500', value: `${stats.creatine} dias`, sub: `de ${daysElapsed} dias`, pctVal: pct(stats.creatine, daysElapsed), cur: stats.creatine, prev: prevStats.creatine, fmtAbs: fmtDias },
+                        { label: 'Estudo', icon: GraduationCap, color: 'text-violet-400', bg: 'bg-violet-500', value: fmtStudy(stats.study), sub: `Média: ${fmtStudy(Math.round(stats.study / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.study, goals.study_minutes * daysElapsed), cur: stats.study, prev: prevStats.study, fmtAbs: fmtStudy },
+                        { label: 'Meditação', icon: Wind, color: 'text-teal-400', bg: 'bg-teal-500', value: fmtStudy(stats.meditation), sub: `Média: ${fmtStudy(Math.round(stats.meditation / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.meditation, goals.meditation_minutes * daysElapsed), cur: stats.meditation, prev: prevStats.meditation, fmtAbs: fmtStudy },
                       ].map(item => {
                         const Icon = item.icon;
                         return (
@@ -840,7 +965,10 @@ export default function Page() {
                               <span className={`ml-auto text-sm font-bold ${item.color}`}>{Math.round(item.pctVal)}%</span>
                             </div>
                             <p className="mb-1 text-xl font-bold text-white">{item.value}</p>
-                            <p className="mb-3 text-xs text-slate-400">{item.sub}</p>
+                            <p className="text-xs text-slate-400">{item.sub}</p>
+                            <p className="mb-3 mt-1">
+                              <DeltaVs current={item.cur} prev={item.prev} fmtAbs={item.fmtAbs} vs="mês passado" showPct />
+                            </p>
                             <ProgressBar value={item.pctVal} goal={100} color={item.bg} />
                           </div>
                         );
