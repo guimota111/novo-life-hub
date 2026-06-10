@@ -499,6 +499,15 @@ export default function Page() {
     return dateStr(d);
   }, [today]);
   const yesterdayData = monthData[yesterdayKey] ?? emptyDay();
+  const yesterdayScore = Math.round(
+    (pct(yesterdayData.water_ml, goals.water_ml) +
+      pct(yesterdayData.steps, goals.steps) +
+      pct(yesterdayData.reading_pages, goals.reading_pages) +
+      (yesterdayData.gym_done ? 100 : 0) +
+      (yesterdayData.creatine_done ? 100 : 0) +
+      pct(yesterdayData.study_minutes, goals.study_minutes) +
+      pct(yesterdayData.meditation_minutes, goals.meditation_minutes)) / 7
+  );
 
   const formatDate = () =>
     new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -594,6 +603,9 @@ export default function Page() {
                     className="h-full rounded-full bg-gradient-to-r from-tamagochi-500 to-emerald-400 transition-all duration-500"
                     style={{ width: `${overallScore}%` }}
                   />
+                </div>
+                <div className="mt-2 text-right">
+                  <DeltaVs current={overallScore} prev={yesterdayScore} fmtAbs={v => `${v}%`} vs="ontem" />
                 </div>
               </div>
 

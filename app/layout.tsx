@@ -7,12 +7,15 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from '@/contexts/AuthContext';
+import { PushProvider } from '@/contexts/PushContext';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <PushProvider>{children}</PushProvider>
+        </AuthProvider>
       </body>
     </html>
   );
