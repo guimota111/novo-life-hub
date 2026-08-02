@@ -1053,6 +1053,7 @@ export default function Page() {
                     <p className="text-center text-slate-400">Carregando dados do ano...</p>
                   ) : (
                     <div className="overflow-x-auto">
+                      <p className="mb-2 text-[11px] text-slate-500 sm:hidden">deslize para o lado →</p>
                       <table className="w-full min-w-[600px] text-sm">
                         <thead>
                           <tr>

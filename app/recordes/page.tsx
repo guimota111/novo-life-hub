@@ -279,6 +279,9 @@ export default function RecordesPage() {
   const [storedRecords, setStoredRecords]   = useState<Records>(emptyRecords());
   const [storedTrophies, setStoredTrophies] = useState<string[]>([]);
 
+  // Trophy tooltip opened by tap (touch has no hover) — null means none open
+  const [openTrophy, setOpenTrophy] = useState<string | null>(null);
+
   const checkedRef = useRef(false);
 
   useEffect(() => {
@@ -478,7 +481,7 @@ export default function RecordesPage() {
 
           {/* Records table */}
           <div className="rounded-[2rem] border border-white/10 bg-white/5 shadow-glow backdrop-blur-xl overflow-hidden">
-            <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-white/10 px-5 py-3">
+            <div className="hidden items-center gap-4 border-b border-white/10 px-5 py-3 sm:grid sm:grid-cols-[1fr_auto_auto_auto]">
               <span className="text-xs font-medium uppercase tracking-widest text-slate-500">Métrica</span>
               <span className="w-28 text-center text-xs font-medium uppercase tracking-widest text-slate-500">Melhor dia</span>
               <span className="w-28 text-center text-xs font-medium uppercase tracking-widest text-slate-500">Melhor semana</span>
@@ -511,16 +514,23 @@ export default function RecordesPage() {
               }
 
               return (
-                <div key={row.id} className={`grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-5 py-3.5 transition hover:bg-white/5 ${separator}`}>
+                <div key={row.id} className={`flex flex-col gap-3 px-5 py-3.5 transition hover:bg-white/5 sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-4 ${separator}`}>
                   <div className="flex items-center gap-3 min-w-0">
                     <Icon size={16} className={row.cor} />
                     <span className="truncate text-sm font-medium text-slate-200">{row.label}</span>
                   </div>
-                  {[dayVal, loading ? '—' : weekVal!, loading ? '—' : monthVal!].map((v, j) => (
-                    <div key={j} className="w-28 rounded-xl border border-white/5 bg-slate-900/50 px-3 py-1.5 text-center">
-                      <p className={`text-sm font-semibold ${loading || v === '0' ? 'text-slate-600' : 'text-white'}`}>{v}</p>
-                    </div>
-                  ))}
+                  <div className="grid grid-cols-3 gap-2 sm:contents">
+                    {[
+                      { label: 'Dia', v: dayVal },
+                      { label: 'Semana', v: loading ? '—' : weekVal! },
+                      { label: 'Mês', v: loading ? '—' : monthVal! },
+                    ].map(({ label, v }, j) => (
+                      <div key={j} className="rounded-xl border border-white/5 bg-slate-900/50 px-3 py-1.5 text-center sm:w-28">
+                        <p className={`text-sm font-semibold ${loading || v === '0' ? 'text-slate-600' : 'text-white'}`}>{v}</p>
+                        <p className="mt-0.5 text-[9px] uppercase tracking-widest text-slate-600 sm:hidden">{label}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -576,11 +586,15 @@ export default function RecordesPage() {
                 const earned = t.canCheck ? earnedKeys.has(t.key) : false;
                 const isNew  = earned && !storedTrophies.includes(t.key) && storedTrophies.length > 0;
 
+                const tooltipOpen = openTrophy === t.key;
+
                 return (
                   <div
                     key={t.key}
+                    onClick={() => setOpenTrophy((prev) => (prev === t.key ? null : t.key))}
                     className={[
                       'group relative flex flex-col items-center gap-1.5 rounded-2xl border p-2.5 text-center transition hover:z-10 hover:scale-105',
+                      tooltipOpen ? 'z-10' : '',
                       earned
                         ? `${style.border} ${style.bg}`
                         : 'border-white/5 bg-slate-900/40 opacity-40 hover:opacity-60',
@@ -606,8 +620,8 @@ export default function RecordesPage() {
                       <span className="text-[8px] text-slate-700">sem dados</span>
                     )}
 
-                    {/* Tooltip */}
-                    <div className="pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-[#0d1b2a] px-3 py-2 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100">
+                    {/* Tooltip — hover on desktop, tap-to-toggle on touch (no hover) */}
+                    <div className={`pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-[#0d1b2a] px-3 py-2 shadow-xl transition-opacity duration-150 group-hover:opacity-100 ${tooltipOpen ? 'opacity-100' : 'opacity-0'}`}>
                       <p className={`mb-1 text-[10px] font-semibold uppercase tracking-widest ${style.text}`}>{t.cat}</p>
                       <p className="text-xs leading-snug text-slate-300">{t.req}</p>
                       {!t.canCheck && (
@@ -618,6 +632,11 @@ export default function RecordesPage() {
                 );
               })}
             </div>
+
+            {/* Tapping outside a trophy closes its tooltip on touch devices */}
+            {openTrophy && (
+              <div className="fixed inset-0 z-0" onClick={() => setOpenTrophy(null)} />
+            )}
           </div>
 
           {/* Push notification info card */}

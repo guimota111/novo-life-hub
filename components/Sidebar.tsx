@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
   LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
-  Footprints, GraduationCap, Menu, Wind, BarChart2,
+  Footprints, GraduationCap, Menu, Wind,
 } from 'lucide-react';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -25,7 +25,6 @@ const navItems = [
   { label: 'Creatina',          href: '/creatina',   icon: Pill },
   { label: 'Calendário',        href: '/calendario', icon: Calendar },
   { label: 'Recordes',          href: '/recordes',   icon: Trophy },
-  { label: 'Relatórios',        href: '/relatorios', icon: BarChart2 },
 ];
 
 // Bottom bar shows 4 primary items + Menu button
@@ -34,6 +33,13 @@ const primaryNav = [
   { label: 'Passos',      href: '/passos',      icon: Footprints },
   { label: 'Exercícios',  href: '/exercicios',  icon: HeartPulse },
   { label: 'Leitura',     href: '/leitura',     icon: BookOpen },
+];
+
+// Groups navItems by theme for the mobile drawer, so it reads as sections instead of a flat grid
+const mobileNavGroups = [
+  { title: 'Visão geral', hrefs: ['/', '/calendario', '/recordes'] },
+  { title: 'Corpo',       hrefs: ['/passos', '/exercicios', '/hidratacao', '/creatina'] },
+  { title: 'Mente',       hrefs: ['/leitura', '/estudo', '/filmes', '/meditacao'] },
 ];
 
 export default function Sidebar() {
@@ -121,6 +127,8 @@ export default function Sidebar() {
 
   return (
     <>
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+
       {/* ── Desktop sidebar ──────────────────────────────────────────────── */}
       <aside className="hidden w-[320px] shrink-0 flex-col rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl md:flex">
         <div ref={containerRef} className="relative mb-10 flex items-center gap-4">
@@ -166,7 +174,6 @@ export default function Sidebar() {
                     <KeyRound size={16} className="text-tamagochi-300" />
                     Alterar senha
                   </button>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                 </>
               ) : (
                 <div className="space-y-2 px-1">
@@ -265,7 +272,7 @@ export default function Sidebar() {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
+            onClick={() => { setMobileOpen(false); setPasswordMode(false); }}
           />
 
           {/* Sheet */}
@@ -276,40 +283,102 @@ export default function Sidebar() {
             </div>
 
             {/* Profile row */}
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-white/5">
-              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300">
-                {photoURL
-                  ? <Image src={photoURL} alt="avatar" fill className="object-cover" />
-                  : <Sparkles size={18} className="absolute inset-0 m-auto text-slate-950" />
-                }
+            <div className="border-b border-white/5 px-5 py-3">
+              <div className="flex items-center gap-3">
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300">
+                  {photoURL
+                    ? <Image src={photoURL} alt="avatar" fill className="object-cover" />
+                    : <Sparkles size={18} className="absolute inset-0 m-auto text-slate-950" />
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{user?.displayName ?? user?.email ?? 'Usuário'}</p>
+                  <p className="text-xs text-slate-500 truncate uppercase tracking-widest">Tamagochi Me</p>
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  aria-label="Alterar foto"
+                  className="p-2 text-slate-500 transition hover:text-white disabled:opacity-40"
+                >
+                  <Camera size={16} />
+                </button>
+                <button
+                  onClick={() => setPasswordMode((v) => !v)}
+                  aria-label="Alterar senha"
+                  className="p-2 text-slate-500 transition hover:text-white"
+                >
+                  <KeyRound size={16} />
+                </button>
+                <button
+                  onClick={() => { setMobileOpen(false); setPasswordMode(false); }}
+                  className="p-1 text-slate-500 hover:text-white transition"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user?.displayName ?? user?.email ?? 'Usuário'}</p>
-                <p className="text-xs text-slate-500 truncate uppercase tracking-widest">Tamagochi Me</p>
-              </div>
-              <button onClick={() => setMobileOpen(false)}
-                className="text-slate-500 hover:text-white transition p-1">
-                <X size={18} />
-              </button>
+
+              {passwordMode && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium uppercase tracking-widest text-tamagochi-300">Alterar senha</span>
+                    <button onClick={() => setPasswordMode(false)} className="text-slate-400 transition hover:text-white">
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="Senha atual"
+                    value={currentPw}
+                    onChange={(e) => setCurrentPw(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-tamagochi-500/50"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Nova senha"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-tamagochi-500/50"
+                  />
+                  {pwError && <p className="text-xs text-red-400">{pwError}</p>}
+                  <button
+                    onClick={handlePasswordChange}
+                    disabled={pwStatus === 'loading' || pwStatus === 'ok'}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-tamagochi-500/30 bg-tamagochi-500/20 py-2 text-sm font-medium text-tamagochi-300 transition hover:bg-tamagochi-500/30"
+                  >
+                    {pwStatus === 'loading' ? 'Salvando…' : pwStatus === 'ok' ? <><Check size={14} /> Salvo!</> : 'Salvar'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Nav grid */}
-            <div className="grid grid-cols-4 gap-1 p-4">
-              {navItems.map(({ label, href, icon: Icon }) => {
-                const active = isActive(href);
-                return (
-                  <Link key={href} href={href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-center transition ${
-                      active
-                        ? 'bg-tamagochi-500/15 text-tamagochi-300 border border-tamagochi-500/30'
-                        : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
-                    }`}>
-                    <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-                    <span className="text-[10px] font-medium leading-tight">{label}</span>
-                  </Link>
-                );
-              })}
+            {/* Nav grid, grouped by theme */}
+            <div className="space-y-4 p-4">
+              {mobileNavGroups.map((group) => (
+                <div key={group.title}>
+                  <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">{group.title}</p>
+                  <div className="grid grid-cols-4 gap-1">
+                    {group.hrefs.map((href) => {
+                      const item = navItems.find((n) => n.href === href);
+                      if (!item) return null;
+                      const Icon = item.icon;
+                      const active = isActive(href);
+                      return (
+                        <Link key={href} href={href}
+                          onClick={() => setMobileOpen(false)}
+                          className={`flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-center transition ${
+                            active
+                              ? 'bg-tamagochi-500/15 text-tamagochi-300 border border-tamagochi-500/30'
+                              : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
+                          }`}>
+                          <Icon size={22} strokeWidth={active ? 2.2 : 1.8} />
+                          <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Footer actions */}

@@ -30,7 +30,11 @@
       "Bash(Get-Content \"C:\\\\Users\\\\Pichau\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Pichau-Documents-Programa--es-NovoLifeHub\\\\9afe379d-43a6-4fc0-95cb-ebc2a91e46cd\\\\tasks\\\\bxki5nbw7.output\" -Wait)",
       "Bash(Select-String \"complete|error|Error|Deploy\")",
       "Bash(Get-Content \"C:\\\\Users\\\\Pichau\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Pichau-Documents-Programa--es-NovoLifeHub\\\\9afe379d-43a6-4fc0-95cb-ebc2a91e46cd\\\\tasks\\\\bxki5nbw7.output\")",
-      "Bash(Select-Object -Last 10)"
+      "Bash(Select-Object -Last 10)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Pichau\\\\Documents\\\\Programações\\\\NovoLifeHub\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(Format-Table FullName)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")"
     ]
   }
 }
