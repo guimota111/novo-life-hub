@@ -1179,6 +1179,28 @@ export default function Page() {
             const windowStats = monthlyStats(dispMerged, dispMonthYear, dispMonthMonth, windowLen);
             const otherStats = monthlyStats(otherMerged, otherYear, otherMonth, windowLen);
 
+            // "Totais do mês" é sempre o mês atual de fato (independe de estar
+            // exibindo o melhor mês nos gráficos acima), comparado com o mesmo
+            // período do mês passado ou do melhor mês, e projetado pro mês inteiro.
+            const curMonthTotals = isBestMonthMode ? otherStats : windowStats;
+            const compareMonthTotals = isBestMonthMode ? windowStats : otherStats;
+            const projFactor = daysElapsed > 0 ? daysInCurMonth / daysElapsed : 1;
+            const fmtLitros = (v: number) => `${(v / 1000).toFixed(1)} L`;
+            const fmtDiasR = (v: number) => `${Math.round(v)} ${Math.round(v) === 1 ? 'dia' : 'dias'}`;
+            const fmtPaginas = (v: number) => `${Math.round(v)} páginas`;
+            const fmtStudyR = (v: number) => fmtStudy(Math.round(v));
+            const fmtNumR = (v: number) => fmtNum(Math.round(v));
+
+            const monthTotalsItems = [
+              { label: 'Água consumida', icon: Droplet, color: 'text-blue-400', cur: curMonthTotals.water, compare: compareMonthTotals.water, fmtVal: fmtLitros },
+              { label: 'Passos dados', icon: Footprints, color: 'text-emerald-400', cur: curMonthTotals.steps, compare: compareMonthTotals.steps, fmtVal: fmtNumR },
+              { label: 'Páginas lidas', icon: BookOpen, color: 'text-amber-400', cur: curMonthTotals.pages, compare: compareMonthTotals.pages, fmtVal: fmtPaginas },
+              { label: 'Dias de treino', icon: Dumbbell, color: 'text-rose-400', cur: curMonthTotals.gym, compare: compareMonthTotals.gym, fmtVal: fmtDiasR },
+              { label: 'Creatina tomada', icon: Pill, color: 'text-purple-400', cur: curMonthTotals.creatine, compare: compareMonthTotals.creatine, fmtVal: fmtDiasR },
+              { label: 'Horas de estudo', icon: GraduationCap, color: 'text-violet-400', cur: curMonthTotals.study, compare: compareMonthTotals.study, fmtVal: fmtStudyR },
+              { label: 'Meditação total', icon: Wind, color: 'text-teal-400', cur: curMonthTotals.meditation, compare: compareMonthTotals.meditation, fmtVal: fmtStudyR },
+            ];
+
             return (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 px-1">
@@ -1265,6 +1287,35 @@ export default function Page() {
                       total={`${stats.creatine}`} goalLabel=" dias"
                       deltaCurrent={windowStats.creatine} deltaPrev={otherStats.creatine} compareLabel={monthCompareLabel}
                     />
+
+                    {/* Totais do mês */}
+                    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                      <p className="mb-1 text-sm uppercase tracking-widest text-tamagochi-300">Totais do mês</p>
+                      <p className="mb-4 text-xs text-slate-500">
+                        Projeção pelo ritmo dos primeiros {daysElapsed} {daysElapsed === 1 ? 'dia' : 'dias'} · comparado com {monthCompareLabel}
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {monthTotalsItems.map(item => {
+                          const Icon = item.icon;
+                          const projected = item.cur * projFactor;
+                          return (
+                            <div key={item.label} className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                              <div className="mb-2 flex items-center gap-3">
+                                <Icon className={item.color} size={20} />
+                                <div className="min-w-0">
+                                  <p className="text-xs text-slate-400">{item.label}</p>
+                                  <p className="font-bold text-white">{item.fmtVal(item.cur)}</p>
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-slate-500">Projeção p/ o mês: {item.fmtVal(projected)}</p>
+                              <div className="mt-1">
+                                <DeltaVs current={item.cur} prev={item.compare} fmtAbs={item.fmtVal} vs={monthCompareLabel} showPct />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
