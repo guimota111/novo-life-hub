@@ -36,7 +36,6 @@ interface DailyData {
 }
 
 type TabPeriod = 'hoje' | 'semana' | 'mes' | 'ano';
-type HeatLevel = 'none' | 'low' | 'mid' | 'full';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,6 +76,46 @@ const getWeekDates = (offsetWeeks = 0): string[] => {
 };
 
 const pct = (val: number, goal: number) => Math.min((val / (goal || 1)) * 100, 100);
+
+// Sem teto — usado no ranking de "melhor semana" (beber 5000ml de meta 4000ml = 125%)
+const pctUncapped = (val: number, goal: number) => (val / (goal || 1)) * 100;
+
+const mondayOf = (dateKey: string): string => {
+  const d = new Date(dateKey + 'T12:00:00');
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  return dateStr(d);
+};
+
+const weekDatesFrom = (mondayKey: string): string[] => {
+  const monday = new Date(mondayKey + 'T12:00:00');
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return dateStr(d);
+  });
+};
+
+function habitScore(d: DailyData, goals: Goals) {
+  const completed = [
+    d.water_ml >= goals.water_ml,
+    d.steps >= goals.steps,
+    d.reading_pages >= goals.reading_pages,
+    d.gym_done,
+    d.creatine_done,
+    d.study_minutes >= goals.study_minutes,
+    d.meditation_minutes >= goals.meditation_minutes,
+  ].filter(Boolean).length;
+  const pctSum =
+    pctUncapped(d.water_ml, goals.water_ml) +
+    pctUncapped(d.steps, goals.steps) +
+    pctUncapped(d.reading_pages, goals.reading_pages) +
+    (d.gym_done ? 100 : 0) +
+    (d.creatine_done ? 100 : 0) +
+    pctUncapped(d.study_minutes, goals.study_minutes) +
+    pctUncapped(d.meditation_minutes, goals.meditation_minutes);
+  return { completed, pctSum };
+}
 
 const fmtStudy = (min: number) => {
   if (min === 0) return '0 min';
@@ -281,61 +320,130 @@ function WeekBarChart({
   );
 }
 
-// ── Month heatmap component ───────────────────────────────────────────────────
+// ── Month bar chart component (largo, uma linha por hábito) ────────────────────
 
-function MonthHeatmap({
-  icon: Icon, iconColor, label,
-  days, firstDayOffset, today,
-  fullCls, midCls, lowCls,
-  getLevel,
+function MonthBarChart({
+  label, icon: Icon, iconColor, fullCls, partialCls,
+  dates, today, getDayValue, goal, formatTotal,
+  deltaCurrent, deltaPrev, compareLabel,
 }: {
+  label: string;
   icon: React.ElementType;
   iconColor: string;
-  label: string;
-  days: { k: string; day: number; isFuture: boolean; data: DailyData }[];
-  firstDayOffset: number;
-  today: string;
   fullCls: string;
-  midCls: string;
-  lowCls: string;
-  getLevel: (d: DailyData) => HeatLevel;
+  partialCls: string;
+  dates: string[];
+  today: string;
+  getDayValue: (dateKey: string) => number;
+  goal: number;
+  formatTotal: (v: number) => string;
+  deltaCurrent: number;
+  deltaPrev: number;
+  compareLabel: string;
 }) {
+  const BAR_H = 90;
+  const vals = dates.map(getDayValue);
+  const maxVal = Math.max(goal, ...vals, 1);
+  const total = vals.reduce((a, v) => a + v, 0);
+
   return (
     <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-1 flex items-center gap-2">
         <Icon size={14} className={iconColor} />
         <span className="text-sm font-medium text-slate-200">{label}</span>
+        <span className="ml-auto text-xs text-slate-400">{formatTotal(total)}</span>
       </div>
-      <div className="mb-1 grid grid-cols-7 gap-0.5">
-        {DAY_PT.map(d => (
-          <div key={d} className="text-center text-[7px] text-slate-600">{d[0]}</div>
-        ))}
+      <div className="mb-3 text-right">
+        <DeltaVs current={deltaCurrent} prev={deltaPrev} fmtAbs={formatTotal} vs={compareLabel} showPct />
       </div>
-      <div className="grid grid-cols-7 gap-0.5">
-        {Array.from({ length: firstDayOffset }).map((_, i) => <div key={`e-${i}`} />)}
-        {days.map(({ k, day, isFuture, data }) => {
-          const level = isFuture ? null : getLevel(data);
-          const isToday = k === today;
+      <div className="relative mb-1" style={{ height: `${BAR_H}px` }}>
+        <div
+          className="absolute left-0 right-0 border-t border-dashed border-white/20 pointer-events-none"
+          style={{ bottom: `${(goal / maxVal) * BAR_H}px` }}
+        />
+        <div className="absolute inset-0 flex items-end gap-[2px]">
+          {dates.map(d => {
+            const val = getDayValue(d);
+            const isFuture = d > today;
+            const isToday = d === today;
+            const met = !isFuture && val >= goal;
+            const h = isFuture || val === 0 ? 2 : Math.max((val / maxVal) * BAR_H, 3);
+            return (
+              <div key={d} className="flex-1 flex items-end h-full">
+                <div
+                  className={[
+                    'w-full rounded-t-sm transition-all',
+                    isFuture ? 'bg-slate-900/30' : val === 0 ? 'bg-slate-900/30' : met ? fullCls : partialCls,
+                    isToday ? 'ring-1 ring-white/30 ring-offset-1 ring-offset-[#08101a]' : '',
+                  ].join(' ')}
+                  style={{ height: `${h}px` }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex justify-between text-[9px] text-slate-500">
+        <span>Dia 1</span>
+        <span>Dia {dates.length}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Month boolean strip (academia / creatina) ───────────────────────────────────
+
+function MonthBoolStrip({
+  label, icon: Icon, iconColor, activeCls,
+  dates, today, getDayDone, total, goalLabel,
+  deltaCurrent, deltaPrev, compareLabel,
+}: {
+  label: string;
+  icon: React.ElementType;
+  iconColor: string;
+  activeCls: string;
+  dates: string[];
+  today: string;
+  getDayDone: (dateKey: string) => boolean;
+  total: string;
+  goalLabel: string;
+  deltaCurrent: number;
+  deltaPrev: number;
+  compareLabel: string;
+}) {
+  const fmtDias = (v: number) => `${v} ${v === 1 ? 'dia' : 'dias'}`;
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+      <div className="mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon size={14} className={iconColor} />
+          <span className="text-sm font-medium text-slate-200">{label}</span>
+        </div>
+        <span className="text-sm font-bold text-slate-200">{total}{goalLabel}</span>
+      </div>
+      <div className="mb-3 text-right">
+        <DeltaVs current={deltaCurrent} prev={deltaPrev} fmtAbs={fmtDias} vs={compareLabel} />
+      </div>
+      <div className="mb-1 flex gap-[2px]">
+        {dates.map(d => {
+          const isFuture = d > today;
+          const done = getDayDone(d);
+          const isToday = d === today;
           return (
             <div
-              key={k}
+              key={d}
               className={[
-                'h-5 flex items-start p-0.5 rounded-sm',
-                isToday ? 'ring-1 ring-white/40 ring-offset-1 ring-offset-[#08101a]' : '',
-                isFuture ? 'bg-slate-900/20' :
-                level === 'full' ? fullCls :
-                level === 'mid'  ? midCls :
-                level === 'low'  ? lowCls :
-                'bg-slate-900/40',
+                'h-6 flex-1 rounded-sm transition',
+                isFuture ? 'bg-slate-900/20' : done ? activeCls : 'bg-slate-900/50',
+                isToday ? 'ring-1 ring-white/30 ring-offset-1 ring-offset-[#08101a]' : '',
               ].join(' ')}
-            >
-              <span className={`text-[7px] leading-none font-medium ${
-                isFuture ? 'text-slate-700' :
-                level === 'none' ? 'text-slate-600' : 'text-white/70'
-              }`}>{day}</span>
-            </div>
+            />
           );
         })}
+      </div>
+      <div className="flex justify-between text-[9px] text-slate-500">
+        <span>Dia 1</span>
+        <span>Dia {dates.length}</span>
       </div>
     </div>
   );
@@ -355,6 +463,10 @@ export default function Page() {
   const [monthFetched, setMonthFetched] = useState(false);
   const [yearFetched, setYearFetched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [weekCompareMode, setWeekCompareMode] = useState<'last' | 'best'>('last');
+  const [monthCompareMode, setMonthCompareMode] = useState<'last' | 'best'>('last');
+  const [allLogsData, setAllLogsData] = useState<Record<string, DailyData> | null>(null);
+  const [allLogsLoading, setAllLogsLoading] = useState(false);
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────
 
@@ -381,6 +493,20 @@ export default function Page() {
     snap.docs.forEach(d => { result[d.id] = { ...emptyDay(), ...(d.data() as Partial<DailyData>) }; });
     return result;
   }, [user]);
+
+  // Carrega todo o histórico sob demanda (só quando "comparar com melhor semana" é usado)
+  const loadAllLogs = useCallback(async () => {
+    if (!user || allLogsData || allLogsLoading) return;
+    setAllLogsLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'users', user.uid, 'daily_logs'));
+      const result: Record<string, DailyData> = {};
+      snap.docs.forEach(d => { result[d.id] = { ...emptyDay(), ...(d.data() as Partial<DailyData>) }; });
+      setAllLogsData(result);
+    } finally {
+      setAllLogsLoading(false);
+    }
+  }, [user, allLogsData, allLogsLoading]);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -438,12 +564,107 @@ export default function Page() {
   const lastWeekDates = getWeekDates(-1);
   const today = getTodayStr();
 
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth();
+  const daysInCurMonth = new Date(curYear, curMonth + 1, 0).getDate();
+  const daysElapsed = Math.min(parseInt(today.split('-')[2], 10), daysInCurMonth);
+
+  const monthDayKeys = (year: number, month: number): string[] => {
+    const days = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: days }, (_, i) => dateStr(new Date(year, month, i + 1)));
+  };
+
+  const getMonthDay = (k: string): DailyData =>
+    k === today ? todayData : (monthData[k] ?? allLogsData?.[k] ?? emptyDay());
+
+  const buildMergedMonth = (year: number, month: number): Record<string, DailyData> => {
+    const result: Record<string, DailyData> = {};
+    monthDayKeys(year, month).forEach(k => { result[k] = getMonthDay(k); });
+    return result;
+  };
+
   const getDayData = (dateKey: string): DailyData =>
     dateKey === today ? todayData : (weekData[dateKey] ?? emptyDay());
 
   const gymDaysThisWeek = weekDates.filter(d =>
     d === today ? todayData.gym_done : (weekData[d]?.gym_done ?? false)
   ).length;
+
+  // Melhor semana já registrada: mais hábitos completados (soma dos 7 dias),
+  // com empate resolvido pela soma das porcentagens do dia (sem teto de 100%).
+  const bestWeek = useMemo(() => {
+    if (!allLogsData) return null;
+    const currentMonday = weekDates[0];
+    const merged: Record<string, DailyData> = { ...allLogsData, [today]: todayData };
+    const mondays = Array.from(new Set(Object.keys(merged).map(mondayOf))).sort();
+
+    let best: { dates: string[]; completed: number; pctSum: number } | null = null;
+    for (const monday of mondays) {
+      if (monday === currentMonday) continue;
+      const dates = weekDatesFrom(monday);
+      let completed = 0, pctSum = 0, hasData = false;
+      for (const k of dates) {
+        if (k > today) continue;
+        const d = merged[k];
+        if (!d) continue;
+        if (d.water_ml || d.steps || d.reading_pages || d.gym_done || d.creatine_done || d.study_minutes || d.meditation_minutes) hasData = true;
+        const score = habitScore(d, goals);
+        completed += score.completed;
+        pctSum += score.pctSum;
+      }
+      if (!hasData) continue;
+      if (!best || completed > best.completed || (completed === best.completed && pctSum > best.pctSum)) {
+        best = { dates, completed, pctSum };
+      }
+    }
+    return best;
+  }, [allLogsData, weekDates, today, todayData, goals]);
+
+  const isBestWeekMode = weekCompareMode === 'best' && !!bestWeek;
+  const displayWeekDates = isBestWeekMode ? bestWeek!.dates : weekDates;
+  const getDisplayDay = (k: string): DailyData =>
+    isBestWeekMode ? (allLogsData?.[k] ?? emptyDay()) : getDayData(k);
+  const weekCompareLabel = isBestWeekMode ? 'semana atual' : 'semana passada';
+
+  // Melhor mês já registrado: mesma lógica da melhor semana, mas olhando só
+  // os primeiros N dias de cada mês (N = dias já passados do mês atual), pra
+  // comparar períodos equivalentes.
+  const bestMonth = useMemo(() => {
+    if (!allLogsData) return null;
+    const merged: Record<string, DailyData> = { ...allLogsData, [today]: todayData };
+    const currentYm = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+    const yms = Array.from(new Set(Object.keys(merged).map(k => k.slice(0, 7)))).sort();
+
+    let best: { year: number; month: number; completed: number; pctSum: number } | null = null;
+    for (const ym of yms) {
+      if (ym === currentYm) continue;
+      const [yy, mm] = ym.split('-').map(Number);
+      const y = yy, m = mm - 1;
+      const daysInM = new Date(y, m + 1, 0).getDate();
+      const windowLen = Math.min(daysElapsed, daysInM);
+      let completed = 0, pctSum = 0, hasData = false;
+      for (let d = 1; d <= windowLen; d++) {
+        const k = dateStr(new Date(y, m, d));
+        const day = merged[k];
+        if (!day) continue;
+        if (day.water_ml || day.steps || day.reading_pages || day.gym_done || day.creatine_done || day.study_minutes || day.meditation_minutes) hasData = true;
+        const score = habitScore(day, goals);
+        completed += score.completed;
+        pctSum += score.pctSum;
+      }
+      if (!hasData) continue;
+      if (!best || completed > best.completed || (completed === best.completed && pctSum > best.pctSum)) {
+        best = { year: y, month: m, completed, pctSum };
+      }
+    }
+    return best;
+  }, [allLogsData, today, todayData, goals, curYear, curMonth, daysElapsed]);
+
+  const isBestMonthMode = monthCompareMode === 'best' && !!bestMonth;
+  const dispMonthYear = isBestMonthMode ? bestMonth!.year : curYear;
+  const dispMonthMonth = isBestMonthMode ? bestMonth!.month : curMonth;
+  const monthCompareLabel = isBestMonthMode ? 'mês atual' : 'mês passado';
 
   const habitDone = {
     water: todayData.water_ml >= goals.water_ml,
@@ -763,31 +984,58 @@ export default function Page() {
 
           {/* ── SEMANA ────────────────────────────────────────────────────── */}
           {tab === 'semana' && (() => {
-            const semStart = weekDates[0].split('-').reverse().slice(0, 2).join('/');
-            const semEnd = weekDates[6].split('-').reverse().slice(0, 2).join('/');
+            const dispStart = displayWeekDates[0].split('-').reverse().slice(0, 2).join('/');
+            const dispEnd = displayWeekDates[6].split('-').reverse().slice(0, 2).join('/');
 
-            // Compare against the same elapsed period of last week (Mon..same weekday)
+            // Modo padrão: compara com o mesmo período elapsed da semana passada.
+            // Modo "melhor semana": exibe a melhor semana e compara com a semana atual (completa).
             const elapsed = weekDates.filter(d => d <= today).length;
             const prevTotalFor = (get: (d: DailyData) => number) =>
-              lastWeekDates.slice(0, elapsed).reduce((a, k) => a + get(lastWeekData[k] ?? emptyDay()), 0);
-            const gymDaysLastWeek = lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.gym_done).length;
-            const creatineDaysThisWeek = weekDates.filter(d => getDayData(d).creatine_done).length;
-            const creatineDaysLastWeek = lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.creatine_done).length;
+              isBestWeekMode
+                ? weekDates.reduce((a, k) => a + get(getDayData(k)), 0)
+                : lastWeekDates.slice(0, elapsed).reduce((a, k) => a + get(lastWeekData[k] ?? emptyDay()), 0);
+
+            const creatineDaysCurrentWeek = weekDates.filter(d => getDayData(d).creatine_done).length;
+            const gymDaysDisplay = displayWeekDates.filter(d => getDisplayDay(d).gym_done).length;
+            const creatineDaysDisplay = displayWeekDates.filter(d => getDisplayDay(d).creatine_done).length;
+            const gymDaysCompareVal = isBestWeekMode
+              ? gymDaysThisWeek
+              : lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.gym_done).length;
+            const creatineDaysCompareVal = isBestWeekMode
+              ? creatineDaysCurrentWeek
+              : lastWeekDates.slice(0, elapsed).filter(d => lastWeekData[d]?.creatine_done).length;
             const fmtDias = (v: number) => `${v} ${v === 1 ? 'dia' : 'dias'}`;
 
             return (
               <div className="space-y-4">
-                <p className="px-1 text-sm uppercase tracking-widest text-tamagochi-300">
-                  Semana {semStart} – {semEnd} · comparativo com o mesmo período da semana passada
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                  <p className="text-sm uppercase tracking-widest text-tamagochi-300">
+                    {isBestWeekMode ? `Sua melhor semana: ${dispStart} – ${dispEnd}` : `Semana ${dispStart} – ${dispEnd}`}
+                    {' '}· comparativo com {weekCompareLabel}
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (weekCompareMode === 'last') { loadAllLogs(); setWeekCompareMode('best'); }
+                      else setWeekCompareMode('last');
+                    }}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-tamagochi-500/40 hover:bg-tamagochi-900/20"
+                  >
+                    {weekCompareMode === 'best' ? 'Voltar à semana atual' : 'Comparar com melhor semana'}
+                  </button>
+                </div>
+                {weekCompareMode === 'best' && !bestWeek && (
+                  <p className="px-1 text-xs text-slate-500">
+                    {allLogsLoading ? 'Procurando sua melhor semana…' : 'Ainda não há outra semana registrada para comparar.'}
+                  </p>
+                )}
 
                 {/* Quantitative habits — bar charts */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <WeekBarChart
                     label="Água" icon={Droplet} iconColor="text-blue-400"
                     fullCls="bg-blue-500/80" partialCls="bg-blue-500/35"
-                    weekDates={weekDates} today={today}
-                    getDayValue={d => getDayData(d).water_ml}
+                    weekDates={displayWeekDates} today={today}
+                    getDayValue={d => getDisplayDay(d).water_ml}
                     goal={goals.water_ml}
                     formatTotal={v => `${fmtNum(v)} ml`}
                     prevTotal={prevTotalFor(d => d.water_ml)}
@@ -795,8 +1043,8 @@ export default function Page() {
                   <WeekBarChart
                     label="Passos" icon={Footprints} iconColor="text-emerald-400"
                     fullCls="bg-emerald-500/80" partialCls="bg-emerald-500/35"
-                    weekDates={weekDates} today={today}
-                    getDayValue={d => getDayData(d).steps}
+                    weekDates={displayWeekDates} today={today}
+                    getDayValue={d => getDisplayDay(d).steps}
                     goal={goals.steps}
                     formatTotal={v => fmtNum(v)}
                     prevTotal={prevTotalFor(d => d.steps)}
@@ -804,8 +1052,8 @@ export default function Page() {
                   <WeekBarChart
                     label="Leitura" icon={BookOpen} iconColor="text-amber-400"
                     fullCls="bg-amber-500/80" partialCls="bg-amber-500/35"
-                    weekDates={weekDates} today={today}
-                    getDayValue={d => getDayData(d).reading_pages}
+                    weekDates={displayWeekDates} today={today}
+                    getDayValue={d => getDisplayDay(d).reading_pages}
                     goal={goals.reading_pages}
                     formatTotal={v => `${v} págs`}
                     prevTotal={prevTotalFor(d => d.reading_pages)}
@@ -813,8 +1061,8 @@ export default function Page() {
                   <WeekBarChart
                     label="Estudo" icon={GraduationCap} iconColor="text-violet-400"
                     fullCls="bg-violet-500/80" partialCls="bg-violet-500/35"
-                    weekDates={weekDates} today={today}
-                    getDayValue={d => getDayData(d).study_minutes}
+                    weekDates={displayWeekDates} today={today}
+                    getDayValue={d => getDisplayDay(d).study_minutes}
                     goal={goals.study_minutes}
                     formatTotal={fmtStudy}
                     prevTotal={prevTotalFor(d => d.study_minutes)}
@@ -822,8 +1070,8 @@ export default function Page() {
                   <WeekBarChart
                     label="Meditação" icon={Wind} iconColor="text-teal-400"
                     fullCls="bg-teal-500/80" partialCls="bg-teal-500/35"
-                    weekDates={weekDates} today={today}
-                    getDayValue={d => getDayData(d).meditation_minutes}
+                    weekDates={displayWeekDates} today={today}
+                    getDayValue={d => getDisplayDay(d).meditation_minutes}
                     goal={goals.meditation_minutes}
                     formatTotal={fmtStudy}
                     prevTotal={prevTotalFor(d => d.meditation_minutes)}
@@ -838,15 +1086,15 @@ export default function Page() {
                         <Dumbbell size={14} className="text-rose-400" />
                         <span className="text-sm font-medium text-slate-200">Academia</span>
                       </div>
-                      <span className="text-sm font-bold text-rose-400">{gymDaysThisWeek}/{goals.gym_days_per_week} dias</span>
+                      <span className="text-sm font-bold text-rose-400">{gymDaysDisplay}/{goals.gym_days_per_week} dias</span>
                     </div>
                     <div className="mb-3 text-right">
-                      <DeltaVs current={gymDaysThisWeek} prev={gymDaysLastWeek} fmtAbs={fmtDias} vs="semana passada" />
+                      <DeltaVs current={gymDaysDisplay} prev={gymDaysCompareVal} fmtAbs={fmtDias} vs={weekCompareLabel} />
                     </div>
                     <div className="mb-3 flex gap-1.5">
-                      {weekDates.map((d, i) => {
+                      {displayWeekDates.map((d, i) => {
                         const isFuture = d > today;
-                        const done = d === today ? todayData.gym_done : (weekData[d]?.gym_done ?? false);
+                        const done = getDisplayDay(d).gym_done;
                         const isToday = d === today;
                         return (
                           <div key={d} className="flex flex-1 flex-col items-center gap-1">
@@ -864,7 +1112,7 @@ export default function Page() {
                         );
                       })}
                     </div>
-                    <ProgressBar value={gymDaysThisWeek} goal={goals.gym_days_per_week} color="bg-rose-500" />
+                    <ProgressBar value={gymDaysDisplay} goal={goals.gym_days_per_week} color="bg-rose-500" />
                   </div>
 
                   <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
@@ -873,7 +1121,7 @@ export default function Page() {
                         <Pill size={14} className="text-purple-400" />
                         <span className="text-sm font-medium text-slate-200">Creatina</span>
                       </div>
-                      {streaks.creatine.count > 0 && (
+                      {!isBestWeekMode && streaks.creatine.count > 0 && (
                         <div className="flex items-center gap-1">
                           <Flame size={12} className="text-purple-400" />
                           <span className="text-sm font-bold text-purple-300">
@@ -883,12 +1131,12 @@ export default function Page() {
                       )}
                     </div>
                     <div className="mb-3 text-right">
-                      <DeltaVs current={creatineDaysThisWeek} prev={creatineDaysLastWeek} fmtAbs={fmtDias} vs="semana passada" />
+                      <DeltaVs current={creatineDaysDisplay} prev={creatineDaysCompareVal} fmtAbs={fmtDias} vs={weekCompareLabel} />
                     </div>
                     <div className="mb-3 flex gap-1.5">
-                      {weekDates.map((d, i) => {
+                      {displayWeekDates.map((d, i) => {
                         const isFuture = d > today;
-                        const done = d === today ? todayData.creatine_done : (weekData[d]?.creatine_done ?? false);
+                        const done = getDisplayDay(d).creatine_done;
                         const isToday = d === today;
                         return (
                           <div key={d} className="flex flex-1 flex-col items-center gap-1">
@@ -907,7 +1155,7 @@ export default function Page() {
                       })}
                     </div>
                     <p className="text-xs text-slate-500">
-                      {creatineDaysThisWeek} / 7 dias esta semana
+                      {creatineDaysDisplay} / 7 dias {isBestWeekMode ? 'nessa semana' : 'esta semana'}
                     </p>
                   </div>
                 </div>
@@ -917,122 +1165,105 @@ export default function Page() {
 
           {/* ── MÊS ───────────────────────────────────────────────────────── */}
           {tab === 'mes' && (() => {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const mergedMonth: Record<string, DailyData> = {};
-            for (let d = 1; d <= daysInMonth; d++) {
-              const k = dateStr(new Date(year, month, d));
-              mergedMonth[k] = k === today ? todayData : (monthData[k] ?? emptyDay());
-            }
-            const stats = monthlyStats(mergedMonth, year, month);
-            const daysElapsed = Math.min(parseInt(today.split('-')[2]), daysInMonth);
+            const dispDates = monthDayKeys(dispMonthYear, dispMonthMonth);
+            const dispMerged = buildMergedMonth(dispMonthYear, dispMonthMonth);
+            const stats = monthlyStats(dispMerged, dispMonthYear, dispMonthMonth);
 
-            // Same period of last month (days 1..daysElapsed)
-            const prevRef = new Date(year, month - 1, 1);
-            const prevYear = prevRef.getFullYear();
-            const prevMonth = prevRef.getMonth();
-            const prevDaysInMonth = new Date(prevYear, prevMonth + 1, 0).getDate();
-            const prevStats = monthlyStats(monthData, prevYear, prevMonth, Math.min(daysElapsed, prevDaysInMonth));
-            const fmtDias = (v: number) => `${v} ${v === 1 ? 'dia' : 'dias'}`;
+            const prevRef = new Date(curYear, curMonth - 1, 1);
+            const otherYear = isBestMonthMode ? curYear : prevRef.getFullYear();
+            const otherMonth = isBestMonthMode ? curMonth : prevRef.getMonth();
+            const otherDaysInMonth = new Date(otherYear, otherMonth + 1, 0).getDate();
+            const windowLen = Math.min(daysElapsed, dispDates.length, otherDaysInMonth);
 
-            const firstDow = new Date(year, month, 1).getDay();
-            const firstDayOffset = firstDow === 0 ? 6 : firstDow - 1;
-            const heatDays = Array.from({ length: daysInMonth }, (_, i) => {
-              const k = dateStr(new Date(year, month, i + 1));
-              return { k, day: i + 1, isFuture: k > today, data: mergedMonth[k] ?? emptyDay() };
-            });
+            const otherMerged = buildMergedMonth(otherYear, otherMonth);
+            const windowStats = monthlyStats(dispMerged, dispMonthYear, dispMonthMonth, windowLen);
+            const otherStats = monthlyStats(otherMerged, otherYear, otherMonth, windowLen);
 
             return (
               <div className="space-y-4">
-                {/* Summary cards */}
-                <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-                  <p className="mb-1 text-sm uppercase tracking-widest text-tamagochi-300">
-                    {MONTH_PT[month]} {year} · {stats.daysLogged} dias registrados
-                  </p>
-                  <p className="mb-6 text-xs text-slate-500">
-                    Comparativo com 1–{Math.min(daysElapsed, prevDaysInMonth)} de {MONTH_PT[prevMonth]}
-                  </p>
-
-                  {!monthFetched ? (
-                    <p className="text-center text-slate-400">Carregando dados do mês...</p>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {[
-                        { label: 'Água', icon: Droplet, color: 'text-blue-400', bg: 'bg-blue-500', value: `${fmtNum(stats.water)} ml`, sub: `Média: ${fmtNum(Math.round(stats.water / Math.max(stats.daysLogged, 1)))} ml/dia`, pctVal: pct(stats.water, goals.water_ml * daysElapsed), cur: stats.water, prev: prevStats.water, fmtAbs: (v: number) => `${fmtNum(v)} ml` },
-                        { label: 'Passos', icon: Footprints, color: 'text-emerald-400', bg: 'bg-emerald-500', value: fmtNum(stats.steps), sub: `Média: ${fmtNum(Math.round(stats.steps / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.steps, goals.steps * daysElapsed), cur: stats.steps, prev: prevStats.steps, fmtAbs: fmtNum },
-                        { label: 'Leitura', icon: BookOpen, color: 'text-amber-400', bg: 'bg-amber-500', value: `${stats.pages} páginas`, sub: `Média: ${(stats.pages / Math.max(stats.daysLogged, 1)).toFixed(1)}/dia`, pctVal: pct(stats.pages, goals.reading_pages * daysElapsed), cur: stats.pages, prev: prevStats.pages, fmtAbs: (v: number) => `${v} págs` },
-                        { label: 'Academia', icon: Dumbbell, color: 'text-rose-400', bg: 'bg-rose-500', value: `${stats.gym} dias`, sub: `Meta: ${Math.round(goals.gym_days_per_week * (daysElapsed / 7))} dias`, pctVal: pct(stats.gym, Math.max(1, Math.round(goals.gym_days_per_week * (daysElapsed / 7)))), cur: stats.gym, prev: prevStats.gym, fmtAbs: fmtDias },
-                        { label: 'Creatina', icon: Pill, color: 'text-purple-400', bg: 'bg-purple-500', value: `${stats.creatine} dias`, sub: `de ${daysElapsed} dias`, pctVal: pct(stats.creatine, daysElapsed), cur: stats.creatine, prev: prevStats.creatine, fmtAbs: fmtDias },
-                        { label: 'Estudo', icon: GraduationCap, color: 'text-violet-400', bg: 'bg-violet-500', value: fmtStudy(stats.study), sub: `Média: ${fmtStudy(Math.round(stats.study / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.study, goals.study_minutes * daysElapsed), cur: stats.study, prev: prevStats.study, fmtAbs: fmtStudy },
-                        { label: 'Meditação', icon: Wind, color: 'text-teal-400', bg: 'bg-teal-500', value: fmtStudy(stats.meditation), sub: `Média: ${fmtStudy(Math.round(stats.meditation / Math.max(stats.daysLogged, 1)))}/dia`, pctVal: pct(stats.meditation, goals.meditation_minutes * daysElapsed), cur: stats.meditation, prev: prevStats.meditation, fmtAbs: fmtStudy },
-                      ].map(item => {
-                        const Icon = item.icon;
-                        return (
-                          <div key={item.label} className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-                            <div className="mb-3 flex items-center gap-2">
-                              <Icon className={item.color} size={16} />
-                              <span className="font-medium text-slate-200">{item.label}</span>
-                              <span className={`ml-auto text-sm font-bold ${item.color}`}>{Math.round(item.pctVal)}%</span>
-                            </div>
-                            <p className="mb-1 text-xl font-bold text-white">{item.value}</p>
-                            <p className="text-xs text-slate-400">{item.sub}</p>
-                            <p className="mb-3 mt-1">
-                              <DeltaVs current={item.cur} prev={item.prev} fmtAbs={item.fmtAbs} vs="mês passado" showPct />
-                            </p>
-                            <ProgressBar value={item.pctVal} goal={100} color={item.bg} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                  <div>
+                    <p className="text-sm uppercase tracking-widest text-tamagochi-300">
+                      {isBestMonthMode ? 'Seu melhor mês: ' : ''}{MONTH_PT[dispMonthMonth]} {dispMonthYear}
+                      {' '}· {stats.daysLogged} dias registrados
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Comparativo dos primeiros {windowLen} dias vs {MONTH_PT[otherMonth]} {otherYear}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (monthCompareMode === 'last') { loadAllLogs(); setMonthCompareMode('best'); }
+                      else setMonthCompareMode('last');
+                    }}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-tamagochi-500/40 hover:bg-tamagochi-900/20"
+                  >
+                    {monthCompareMode === 'best' ? 'Voltar ao mês atual' : 'Comparar com melhor mês'}
+                  </button>
                 </div>
+                {monthCompareMode === 'best' && !bestMonth && (
+                  <p className="px-1 text-xs text-slate-500">
+                    {allLogsLoading ? 'Procurando seu melhor mês…' : 'Ainda não há outro mês registrado para comparar.'}
+                  </p>
+                )}
 
-                {/* Heatmaps por hábito */}
-                {monthFetched && (
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <MonthHeatmap
-                      icon={Droplet} iconColor="text-blue-400" label="Água"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-blue-500/80" midCls="bg-blue-500/40" lowCls="bg-blue-500/20"
-                      getLevel={d => pct(d.water_ml, goals.water_ml) >= 100 ? 'full' : pct(d.water_ml, goals.water_ml) >= 50 ? 'mid' : d.water_ml > 0 ? 'low' : 'none'}
+                {!monthFetched ? (
+                  <p className="text-center text-slate-400">Carregando dados do mês...</p>
+                ) : (
+                  <div className="space-y-4">
+                    <MonthBarChart
+                      label="Água" icon={Droplet} iconColor="text-blue-400"
+                      fullCls="bg-blue-500/80" partialCls="bg-blue-500/35"
+                      dates={dispDates} today={today} goal={goals.water_ml}
+                      getDayValue={d => dispMerged[d]?.water_ml ?? 0}
+                      formatTotal={v => `${fmtNum(v)} ml`}
+                      deltaCurrent={windowStats.water} deltaPrev={otherStats.water} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={Footprints} iconColor="text-emerald-400" label="Passos"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-emerald-500/80" midCls="bg-emerald-500/40" lowCls="bg-emerald-500/20"
-                      getLevel={d => pct(d.steps, goals.steps) >= 100 ? 'full' : pct(d.steps, goals.steps) >= 50 ? 'mid' : d.steps > 0 ? 'low' : 'none'}
+                    <MonthBarChart
+                      label="Passos" icon={Footprints} iconColor="text-emerald-400"
+                      fullCls="bg-emerald-500/80" partialCls="bg-emerald-500/35"
+                      dates={dispDates} today={today} goal={goals.steps}
+                      getDayValue={d => dispMerged[d]?.steps ?? 0}
+                      formatTotal={fmtNum}
+                      deltaCurrent={windowStats.steps} deltaPrev={otherStats.steps} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={BookOpen} iconColor="text-amber-400" label="Leitura"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-amber-500/80" midCls="bg-amber-500/40" lowCls="bg-amber-500/20"
-                      getLevel={d => pct(d.reading_pages, goals.reading_pages) >= 100 ? 'full' : pct(d.reading_pages, goals.reading_pages) >= 50 ? 'mid' : d.reading_pages > 0 ? 'low' : 'none'}
+                    <MonthBarChart
+                      label="Leitura" icon={BookOpen} iconColor="text-amber-400"
+                      fullCls="bg-amber-500/80" partialCls="bg-amber-500/35"
+                      dates={dispDates} today={today} goal={goals.reading_pages}
+                      getDayValue={d => dispMerged[d]?.reading_pages ?? 0}
+                      formatTotal={v => `${v} págs`}
+                      deltaCurrent={windowStats.pages} deltaPrev={otherStats.pages} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={Dumbbell} iconColor="text-rose-400" label="Academia"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-rose-500/80" midCls="bg-rose-500/80" lowCls="bg-rose-500/80"
-                      getLevel={d => d.gym_done ? 'full' : 'none'}
+                    <MonthBarChart
+                      label="Estudo" icon={GraduationCap} iconColor="text-violet-400"
+                      fullCls="bg-violet-500/80" partialCls="bg-violet-500/35"
+                      dates={dispDates} today={today} goal={goals.study_minutes}
+                      getDayValue={d => dispMerged[d]?.study_minutes ?? 0}
+                      formatTotal={fmtStudy}
+                      deltaCurrent={windowStats.study} deltaPrev={otherStats.study} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={Pill} iconColor="text-purple-400" label="Creatina"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-purple-500/80" midCls="bg-purple-500/80" lowCls="bg-purple-500/80"
-                      getLevel={d => d.creatine_done ? 'full' : 'none'}
+                    <MonthBarChart
+                      label="Meditação" icon={Wind} iconColor="text-teal-400"
+                      fullCls="bg-teal-500/80" partialCls="bg-teal-500/35"
+                      dates={dispDates} today={today} goal={goals.meditation_minutes}
+                      getDayValue={d => dispMerged[d]?.meditation_minutes ?? 0}
+                      formatTotal={fmtStudy}
+                      deltaCurrent={windowStats.meditation} deltaPrev={otherStats.meditation} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={GraduationCap} iconColor="text-violet-400" label="Estudo"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-violet-500/80" midCls="bg-violet-500/40" lowCls="bg-violet-500/20"
-                      getLevel={d => pct(d.study_minutes, goals.study_minutes) >= 100 ? 'full' : pct(d.study_minutes, goals.study_minutes) >= 50 ? 'mid' : d.study_minutes > 0 ? 'low' : 'none'}
+                    <MonthBoolStrip
+                      label="Academia" icon={Dumbbell} iconColor="text-rose-400" activeCls="bg-rose-500/70"
+                      dates={dispDates} today={today}
+                      getDayDone={d => dispMerged[d]?.gym_done ?? false}
+                      total={`${stats.gym}`} goalLabel=" dias"
+                      deltaCurrent={windowStats.gym} deltaPrev={otherStats.gym} compareLabel={monthCompareLabel}
                     />
-                    <MonthHeatmap
-                      icon={Wind} iconColor="text-teal-400" label="Meditação"
-                      days={heatDays} firstDayOffset={firstDayOffset} today={today}
-                      fullCls="bg-teal-500/80" midCls="bg-teal-500/40" lowCls="bg-teal-500/20"
-                      getLevel={d => pct(d.meditation_minutes, goals.meditation_minutes) >= 100 ? 'full' : pct(d.meditation_minutes, goals.meditation_minutes) >= 50 ? 'mid' : d.meditation_minutes > 0 ? 'low' : 'none'}
+                    <MonthBoolStrip
+                      label="Creatina" icon={Pill} iconColor="text-purple-400" activeCls="bg-purple-500/70"
+                      dates={dispDates} today={today}
+                      getDayDone={d => dispMerged[d]?.creatine_done ?? false}
+                      total={`${stats.creatine}`} goalLabel=" dias"
+                      deltaCurrent={windowStats.creatine} deltaPrev={otherStats.creatine} compareLabel={monthCompareLabel}
                     />
                   </div>
                 )}
