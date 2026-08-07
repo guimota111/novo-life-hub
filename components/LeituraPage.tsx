@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  collection, doc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, increment, Timestamp,
+  collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc, increment, Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus, ChevronLeft, ChevronRight, X, Check, Star, BookOpen,
-  RefreshCw, Trash2,
+  RefreshCw, Trash2, History,
 } from 'lucide-react';
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -252,6 +252,13 @@ export default function LeituraPage() {
   const [showFinishedYear, setShowFinishedYear] = useState(new Date().getFullYear());
   const [showBookList,     setShowBookList]     = useState(false);
 
+  // sessions panel
+  const [showSessions,   setShowSessions]   = useState(false);
+  const [ssFilter,       setSsFilter]       = useState('all');
+  const [ssLimit,        setSsLimit]        = useState(20);
+  const [ssConfirmDel,   setSsConfirmDel]   = useState<string | null>(null);
+  const [ssDeleting,     setSsDeleting]     = useState<string | null>(null);
+
   // ── add book form ──
   const [bkName,   setBkName]   = useState('');
   const [bkAuthor, setBkAuthor] = useState('');
@@ -320,6 +327,27 @@ export default function LeituraPage() {
   const selectedBook = useMemo(
     () => books.find(b => b.id === selectedBookId) ?? null,
     [books, selectedBookId]
+  );
+
+  const bookById = useMemo(() => {
+    const map: Record<string, Book> = {};
+    books.forEach(b => { map[b.id] = b; });
+    return map;
+  }, [books]);
+
+  const sortedSessions = useMemo(
+    () => [...sessions].sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions]
+  );
+
+  const filteredSessions = useMemo(
+    () => ssFilter === 'all' ? sortedSessions : sortedSessions.filter(s => s.bookId === ssFilter),
+    [sortedSessions, ssFilter]
+  );
+
+  const filteredSessionPages = useMemo(
+    () => filteredSessions.reduce((s, x) => s + x.pagesRead, 0),
+    [filteredSessions]
   );
 
   const authorList = useMemo(
@@ -491,6 +519,25 @@ export default function LeituraPage() {
     } finally { setSsSaving(false); }
   }
 
+  async function handleDeleteSession(session: ReadingSession) {
+    if (!user) return;
+    setSsDeleting(session.id);
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'reading_sessions', session.id));
+
+      // devolve as páginas ao log diário sem deixar o total negativo
+      const logRef  = doc(db, 'users', user.uid, 'daily_logs', session.date);
+      const logSnap = await getDoc(logRef);
+      const current = Number(logSnap.data()?.reading_pages ?? 0);
+      await setDoc(logRef, {
+        reading_pages: Math.max(0, current - session.pagesRead), updatedAt: new Date(),
+      }, { merge: true });
+
+      setSessions(prev => prev.filter(s => s.id !== session.id));
+    } catch (e) { console.error(e); }
+    finally { setSsDeleting(null); setSsConfirmDel(null); }
+  }
+
   async function handleFinishBook() {
     if (!user || !selectedBookId) return;
     setFnSaving(true);
@@ -543,6 +590,44 @@ export default function LeituraPage() {
 
   const readingBooks = books.filter(b => b.status === 'reading');
   const bookBarH = 40;
+
+  function renderSessionRow(s: ReadingSession, opts: { showBook: boolean }) {
+    const book      = bookById[s.bookId];
+    const confirming = ssConfirmDel === s.id;
+    const busy       = ssDeleting === s.id;
+    return (
+      <div key={s.id} className="flex items-center gap-3 rounded-xl bg-slate-900/60 px-3 py-2">
+        <span className="shrink-0 text-xs text-slate-400 tabular-nums">
+          {new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+        </span>
+        {opts.showBook && (
+          <span className={`flex-1 min-w-0 truncate text-xs ${book ? 'text-slate-300' : 'italic text-red-400/70'}`}>
+            {book ? book.name : 'Livro removido'}
+          </span>
+        )}
+        <span className={`shrink-0 text-xs font-medium text-white ${opts.showBook ? '' : 'ml-auto'}`}>
+          {s.pagesRead} pág.
+        </span>
+        {confirming ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <button onClick={() => handleDeleteSession(s)} disabled={busy}
+              className="rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-[10px] font-medium text-red-300 transition hover:bg-red-500/25 disabled:opacity-50">
+              {busy ? '...' : 'Apagar'}
+            </button>
+            <button onClick={() => setSsConfirmDel(null)} disabled={busy}
+              className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-slate-400 transition hover:text-white disabled:opacity-50">
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setSsConfirmDel(s.id)} title="Apagar sessão"
+            className="shrink-0 rounded-lg p-1 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400">
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -606,6 +691,60 @@ export default function LeituraPage() {
           </div>
         </div>
       )}
+
+      {/* Reading sessions */}
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <History size={14} className="text-slate-500" />
+            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">Sessões de leitura</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500">{sessions.length} registro{sessions.length === 1 ? '' : 's'}</span>
+            {sessions.length > 0 && (
+              <button onClick={() => { setShowSessions(v => !v); setSsConfirmDel(null); }}
+                className="text-[11px] text-sky-400 transition hover:text-sky-300">
+                {showSessions ? 'Ocultar' : 'Ver e apagar'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {sessions.length === 0 && (
+          <p className="py-2 pt-4 text-center text-sm text-slate-600">Nenhuma sessão registrada ainda.</p>
+        )}
+
+        {showSessions && sessions.length > 0 && (
+          <div className="mt-4 border-t border-white/5 pt-4">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <select className={`${inputCls} max-w-[240px]`} value={ssFilter}
+                onChange={e => { setSsFilter(e.target.value); setSsLimit(20); setSsConfirmDel(null); }}>
+                <option value="all">Todos os livros</option>
+                {books.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <span className="text-xs text-slate-500">
+                {filteredSessions.length} sessõe{filteredSessions.length === 1 ? '' : 's'} · {filteredSessionPages.toLocaleString('pt-BR')} pág.
+              </span>
+            </div>
+
+            {filteredSessions.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-600">Nenhuma sessão para este livro.</p>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  {filteredSessions.slice(0, ssLimit).map(s => renderSessionRow(s, { showBook: true }))}
+                </div>
+                {filteredSessions.length > ssLimit && (
+                  <button onClick={() => setSsLimit(n => n + 20)}
+                    className="mt-3 w-full rounded-xl border border-white/10 py-2 text-[11px] text-slate-400 transition hover:border-sky-500/30 hover:text-sky-300">
+                    Mostrar mais ({filteredSessions.length - ssLimit} restantes)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Timeline */}
       <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
@@ -953,15 +1092,10 @@ export default function LeituraPage() {
             {sessions.filter(s => s.bookId === selectedBook.id).length > 0 && (
               <div className="border-t border-white/5 pt-4">
                 <p className="mb-2 text-xs font-medium text-slate-500">Sessões de leitura</p>
-                <div className="max-h-32 overflow-y-auto space-y-1.5">
+                <div className="max-h-40 overflow-y-auto space-y-1.5">
                   {sessions.filter(s => s.bookId === selectedBook.id)
                     .sort((a, b) => b.date.localeCompare(a.date))
-                    .map(s => (
-                      <div key={s.id} className="flex items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2">
-                        <span className="text-xs text-slate-400">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                        <span className="text-xs font-medium text-white">{s.pagesRead} pág.</span>
-                      </div>
-                    ))}
+                    .map(s => renderSessionRow(s, { showBook: false }))}
                 </div>
               </div>
             )}
