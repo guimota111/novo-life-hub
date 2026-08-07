@@ -11,6 +11,8 @@
 
 html, body {
   min-height: 100%;
+  overflow-x: hidden;              /* impede a pagina de "vazar" alguns px pro lado */
+  -webkit-text-size-adjust: 100%;  /* iOS nao aumenta a fonte sozinho */
   background: radial-gradient(circle at top left, rgba(124, 213, 255, 0.15), transparent 35%),
               radial-gradient(circle at bottom right, rgba(255, 141, 179, 0.12), transparent 30%),
               #08101a;
@@ -18,11 +20,19 @@ html, body {
 
 body {
   margin: 0;
+  -webkit-tap-highlight-color: transparent;  /* remove o flash cinza ao tocar */
 }
 
 @media (max-width: 767px) {
   body {
     padding-bottom: 5rem;
+  }
+
+  /* backdrop-blur e caro no mobile e o fundo e quase solido: o blur nao agrega
+     quase nada visualmente, entao desligamos p/ scroll e toque fluidos. */
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 }
 

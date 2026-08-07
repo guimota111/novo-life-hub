@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
+import { getTodaySP } from '@/lib/dates';
 
 async function resolveUserId(token: string | null): Promise<string | null> {
   if (!token) return null;
@@ -10,11 +11,6 @@ async function resolveUserId(token: string | null): Promise<string | null> {
     .get();
   if (snap.empty) return null;
   return snap.docs[0].data().userId as string;
-}
-
-function getTodayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -47,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum dado válido enviado' }, { status: 400 });
     }
 
-    const today = getTodayStr();
+    const today = getTodaySP();
     await adminDb
       .collection('users').doc(userId)
       .collection('daily_logs').doc(today)

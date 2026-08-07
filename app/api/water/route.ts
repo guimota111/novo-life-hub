@@ -1,45 +1,46 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import * as admin from 'firebase-admin';
+import { resolveUserByToken, getTodaySP } from '@/lib/device';
 
-// Senha secreta para impedir que outras pessoas mandem requisições para o seu site
-const SECRET_TOKEN = "NFC_TAMAGOCHI_2026_SECRET";
-
-export async function POST(request: Request) {
+// POST /api/water?token=<token>   body: { ml: number }
+// (o token tambem pode vir no corpo). Incrementa a agua de hoje do dono do token.
+// Autenticacao pela colecao nfc_tokens — o mesmo esquema dos atalhos NFC de
+// creatina/academia e do aparelho de bolso. (Antes havia um segredo hardcoded.)
+export async function POST(request: NextRequest) {
+  let body: { token?: string; ml?: number };
   try {
-    const body = await request.json();
-    const { token, uid, ml } = body;
+    body = await request.json();
+  } catch {
+    body = {};
+  }
 
-    // Verifica a segurança
-    if (!token || token !== SECRET_TOKEN) {
-      return NextResponse.json({ error: 'Acesso negado: Token de automação inválido' }, { status: 401 });
-    }
+  const token = request.nextUrl.searchParams.get('token') ?? body.token ?? null;
+  const uid = await resolveUserByToken(token);
+  if (!uid) {
+    return NextResponse.json(
+      { error: token ? 'Token inválido' : 'Token ausente' },
+      { status: token ? 401 : 400 },
+    );
+  }
 
-    // Verifica se os dados mínimos foram enviados
-    if (!uid || typeof ml !== 'number') {
-      return NextResponse.json({ error: 'Dados inválidos. Envie o uid e a quantidade em ml (número)' }, { status: 400 });
-    }
+  if (typeof body.ml !== 'number' || !Number.isFinite(body.ml)) {
+    return NextResponse.json({ error: 'Envie a quantidade em ml (número)' }, { status: 400 });
+  }
 
-    // Calcula a data de hoje garantindo o fuso horário do Brasil (America/Sao_Paulo)
-    // O servidor do Google Cloud roda em UTC, o que fazia a água ser salva no "dia de amanhã" durante a noite.
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-
-    // Acessa o banco de dados como administrador (pula as regras normais do Firestore)
-    const logRef = adminDb.collection('users').doc(uid).collection('daily_logs').doc(todayStr);
-
-    // Incrementa a água
-    await logRef.set({
-      water_ml: admin.firestore.FieldValue.increment(ml),
-      updatedAt: new Date()
+  const today = getTodaySP();
+  await adminDb
+    .collection('users').doc(uid)
+    .collection('daily_logs').doc(today)
+    .set({
+      water_ml: admin.firestore.FieldValue.increment(body.ml),
+      updatedAt: new Date(),
     }, { merge: true });
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `${ml}ml adicionados com sucesso via NFC para o dia ${todayStr}!` 
-    }, { status: 200 });
-
-  } catch (error: any) {
-    console.error('Erro na API de hidratação NFC:', error);
-    return NextResponse.json({ error: 'Erro interno no servidor' }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    date: today,
+    added: body.ml,
+    message: `${body.ml}ml adicionados para ${today}`,
+  });
 }

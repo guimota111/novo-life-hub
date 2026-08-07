@@ -1,4 +1,7 @@
 import { adminDb } from '@/lib/firebase-admin';
+import { getTodaySP } from '@/lib/dates';
+
+export { getTodaySP };
 
 // ============================================================
 //  Suporte ao Habit Tracker de bolso (M5StickC Plus2)
@@ -29,18 +32,14 @@ export const METRICS: MetricDef[] = [
   { key: 'agua',     field: 'water_ml',      type: 'num',  goalField: 'water_ml' },
   { key: 'academia', field: 'gym_done',      type: 'bool', goalField: null },
   { key: 'creatina', field: 'creatine_done', type: 'bool', goalField: null },
-  { key: 'estudo',   field: 'study_minutes', type: 'num',  goalField: 'study_minutes' },
-  { key: 'passos',   field: 'steps',         type: 'num',  goalField: 'steps', readonly: true },
-  { key: 'leitura',  field: 'reading_pages', type: 'num',  goalField: 'reading_pages' },
+  { key: 'estudo',    field: 'study_minutes',      type: 'num',  goalField: 'study_minutes' },
+  { key: 'meditacao', field: 'meditation_minutes', type: 'num',  goalField: 'meditation_minutes' },
+  { key: 'passos',    field: 'steps',              type: 'num',  goalField: 'steps', readonly: true },
+  { key: 'leitura',   field: 'reading_pages',      type: 'num',  goalField: 'reading_pages' },
 ];
 
 export function getMetric(key: string): MetricDef | undefined {
   return METRICS.find(m => m.key === key);
-}
-
-// "Hoje" no fuso do Brasil — mesmo critério das rotas /api/water e /api/creatina.
-export function getTodaySP(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
 // Resolve o dono do token na coleção nfc_tokens (a mesma dos atalhos NFC).

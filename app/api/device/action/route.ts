@@ -5,9 +5,11 @@ import {
 } from '@/lib/device';
 
 // POST /api/device/action?token=<device_token>
-// Body: { "metric": "agua", "amount": 250 }
+// Body: { "metric": "agua", "amount": 250 }        (num  -> incrementa)
+//    ou: { "metric": "academia", "value": 1 }       (bool -> define feito=1/nao=0)
 //   - num  : incrementa o campo por `amount` (aceita negativo; não passa de 0)
-//   - bool : alterna feito/não-feito (ignora `amount`)
+//   - bool : define o valor absoluto por `value` (0/1). Se `value` ausente, alterna.
+//            (o valor absoluto evita conflito ao sincronizar acoes feitas offline)
 // Retorna o novo valor: { metric, atual, meta, date }
 export async function POST(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token');
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { metric?: string; amount?: number };
+  let body: { metric?: string; amount?: number; value?: number };
   try {
     body = await request.json();
   } catch {
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
   let meta = 1;
 
   if (m.type === 'bool') {
-    const novo = !(log[m.field] === true);
+    const novo = body.value !== undefined ? !!Number(body.value) : !(log[m.field] === true);
     await ref.set({ [m.field]: novo, updatedAt: new Date() }, { merge: true });
     atual = novo ? 1 : 0;
   } else {

@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Regras de seguranca do Firestore — Tamagochi Me
+// Postura: nega tudo por padrao; o usuario so acessa os proprios dados.
+// As rotas de API do servidor usam o Admin SDK (adminDb) e ignoram estas regras.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Todos os dados do usuario (perfil, daily_logs, settings, movies,
+    // books, sessions, stats, etc.) — somente o dono le/escreve.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Tokens de automacao (doc id == uid). O cliente le/escreve apenas o seu.
+    // O servidor consulta por token via Admin SDK (ignora estas regras).
+    match /nfc_tokens/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /health_tokens/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Qualquer outra colecao (ex: health_logs) fica inacessivel ao cliente.
+    // Nada de allow aqui = negado por padrao.
+  }
+}
