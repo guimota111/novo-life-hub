@@ -1,0 +1,37 @@
+// ============================================================
+//  config.h.example - copie para config.h e preencha os valores
+// ============================================================
+#pragma once
+
+// -------------------- WiFi --------------------
+// Rede de casa
+#define WIFI_SSID      "SEU_WIFI"
+#define WIFI_PASSWORD  "SUA_SENHA_WIFI"
+
+// Hotspot do celular (Roteador Pessoal do iPhone com "Maximizar Compatibilidade" = 2.4GHz).
+// O aparelho conecta automaticamente na rede que estiver disponivel.
+#define WIFI_SSID2     "SEU_WIFI_2"
+#define WIFI_PASSWORD2 "SUA_SENHA_WIFI_2"
+
+// -------------------- App (Firebase App Hosting) ----------------
+// Base das APIs do seu app, COM https:// e SEM barra final.
+#define API_BASE   "https://SEU_BACKEND.hosted.app"
+
+// Token do dispositivo. Deve existir um doc na colecao 'nfc_tokens' com
+// { token: "<este valor>", userId: "<seu uid>" }.
+// (o mesmo esquema dos seus atalhos NFC de creatina/academia)
+#define DEVICE_TOKEN  "SEU_DEVICE_TOKEN"
+
+// -------------------- Incrementos por clique -----------
+#define INC_AGUA       250   // ml por clique
+#define INC_ESTUDO     15    // minutos por clique
+#define INC_MEDITACAO  5     // minutos por clique
+#define INC_LEITURA    5     // paginas por clique
+
+// -------------------- Comportamento -----------
+#define AUTO_SYNC_INTERVAL_MS  60000UL   // re-sync automatico a cada 60s (0 desliga)
+#define HOLD_MS                800       // segurar botao (force refresh / decremento)
+#define HTTP_TIMEOUT_MS        9000
+#define SCREEN_TIMEOUT_MS      30000UL   // desliga a tela apos X ms sem uso (0 desliga)
+#define BRIGHTNESS             120       // brilho da tela (0-255)
+#define RECONNECT_INTERVAL_MS  15000UL   // de quanto em quanto tenta reconectar quando offline

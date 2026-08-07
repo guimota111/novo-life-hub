@@ -1,0 +1,28 @@
+// ============================================================
+//  config.h.example - copie para config.h e preencha os valores
+// ============================================================
+#pragma once
+
+// -------------------- WiFi --------------------
+#define WIFI_SSID      "SEU_WIFI"
+#define WIFI_PASSWORD  "SUA_SENHA_WIFI"
+
+// Segunda rede (hotspot). Se nao usar, deixe igual a de casa.
+#define WIFI_SSID2     "SEU_WIFI_2"
+#define WIFI_PASSWORD2 "SUA_SENHA_WIFI_2"
+
+// -------------------- App (Firebase App Hosting) ----------------
+#define API_BASE      "https://SEU_BACKEND.hosted.app"
+#define DEVICE_TOKEN  "SEU_DEVICE_TOKEN"
+
+// -------------------- Incrementos por toque -----------
+#define INC_AGUA       250   // ml
+#define INC_ESTUDO     15    // min
+#define INC_MEDITACAO  5     // min
+#define INC_LEITURA    5     // paginas
+
+// -------------------- Comportamento -----------
+#define AUTO_SYNC_INTERVAL_MS  60000UL
+#define HTTP_TIMEOUT_MS        9000
+#define RECONNECT_INTERVAL_MS  15000UL
+#define BRIGHTNESS             255       // 0-255 (vitrine: brilho total)
