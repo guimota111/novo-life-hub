@@ -10,6 +10,7 @@ import {
   Plus, ChevronLeft, ChevronRight, X, Check, Star,
   Clock, RefreshCw, Trash2,
 } from 'lucide-react';
+import CalendarHeatmap from '@/components/CalendarHeatmap';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,9 @@ const GENRES = [
 const MONTHS_PT    = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
+// Níveis de intensidade do heatmap (1 filme, 2, 3, 4+)
+const HEATMAP_LEVELS = ['bg-violet-500/30', 'bg-violet-500/55', 'bg-violet-500/75', 'bg-violet-500/95'];
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function todayStr() {
@@ -49,12 +53,6 @@ function todayStr() {
 }
 
 function parseDate(s: string) { return new Date(s + 'T12:00:00'); }
-function daysBetween(a: Date, b: Date) {
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
-}
-function addDays(d: Date, n: number) {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
 function fmtDuration(min: number) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -76,39 +74,6 @@ function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allMo
   const watchDates = allMovies.filter(m => m.watchDate).map(m => parseDate(m.watchDate!));
   const earliest = watchDates.length ? new Date(Math.min(...watchDates.map(d => d.getTime()))) : now;
   return { start: earliest, end: now };
-}
-
-function getXTicks(start: Date, end: Date, scale: TlScale): { label: string; pct: number }[] {
-  const total = daysBetween(start, end) || 1;
-  const ticks: { label: string; pct: number }[] = [];
-
-  if (scale === 'month') {
-    for (let d = new Date(start); d <= end; d = addDays(d, 5)) {
-      ticks.push({ label: String(d.getDate()), pct: daysBetween(start, d) / total * 100 });
-    }
-  } else if (scale === 'quarter') {
-    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cur <= end) {
-      ticks.push({ label: MONTHS_SHORT[cur.getMonth()], pct: daysBetween(start, cur) / total * 100 });
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-    }
-  } else if (scale === 'year') {
-    for (let m = 0; m < 12; m++) {
-      const d = new Date(start.getFullYear(), m, 1);
-      if (d >= start && d <= end)
-        ticks.push({ label: MONTHS_SHORT[m], pct: daysBetween(start, d) / total * 100 });
-    }
-  } else {
-    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cur <= end) {
-      ticks.push({
-        label: `${MONTHS_SHORT[cur.getMonth()]} ${String(cur.getFullYear()).slice(2)}`,
-        pct: daysBetween(start, cur) / total * 100,
-      });
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
-    }
-  }
-  return ticks.filter(t => t.pct >= 0 && t.pct <= 100);
 }
 
 function periodDates(view: StatView): { start: string; end: string } {
@@ -313,20 +278,15 @@ export default function FilmesPage() {
     () => getTimelineRange(tlScale, tlYear, tlMonth, movies),
     [tlScale, tlYear, tlMonth, movies]
   );
-  const tlDays  = useMemo(() => Math.max(daysBetween(tlRange.start, tlRange.end), 1), [tlRange]);
-  const tlTicks = useMemo(() => getXTicks(tlRange.start, tlRange.end, tlScale), [tlRange, tlScale]);
 
-  const moviesInTimeline = useMemo(() => {
-    return watchedMovies
-      .filter(m => m.watchDate)
-      .map(m => {
-        const date = parseDate(m.watchDate!);
-        if (date < tlRange.start || date > tlRange.end) return null;
-        const pct = daysBetween(tlRange.start, date) / tlDays * 100;
-        return { movie: m, pct };
-      })
-      .filter(Boolean) as { movie: Movie; pct: number }[];
-  }, [watchedMovies, tlRange, tlDays]);
+  const moviesByDate = useMemo(() => {
+    const map: Record<string, Movie[]> = {};
+    watchedMovies.forEach(m => {
+      if (!m.watchDate) return;
+      (map[m.watchDate] ??= []).push(m);
+    });
+    return map;
+  }, [watchedMovies]);
 
   // stats
   const statPeriod = useMemo(() => periodDates(statView), [statView]);
@@ -606,55 +566,46 @@ export default function FilmesPage() {
           )}
         </div>
 
-        {moviesInTimeline.length === 0 ? (
+        {!Object.keys(moviesByDate).some(k => { const d = parseDate(k); return d >= tlRange.start && d <= tlRange.end; }) ? (
           <p className="py-8 text-center text-sm text-slate-600">Nenhum filme assistido neste período.</p>
         ) : (
-          <div>
-            {/* X-axis ticks */}
-            <div className="relative mb-2 ml-28 h-5 border-b border-white/5">
-              {tlTicks.map((tick, i) => (
-                <span key={i}
-                  className="absolute -translate-x-1/2 text-[9px] text-slate-600"
-                  style={{ left: `${tick.pct}%`, bottom: 4 }}>
-                  {tick.label}
-                </span>
-              ))}
-            </div>
-
-            {/* Movie rows — dot at watchDate */}
-            <div className="space-y-1.5" style={{ overflow: 'visible' }}>
-              {moviesInTimeline.map(({ movie, pct }) => (
-                <div key={movie.id} className="flex items-center gap-2" style={{ height: 36 }}>
-                  {/* Label */}
-                  <button onClick={() => openEdit(movie)}
-                    className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate hover:text-violet-300 transition pr-2">
-                    {movie.name}
-                  </button>
-                  {/* Dot area */}
-                  <div className="relative flex-1" style={{ height: 36, overflow: 'visible' }}>
-                    <div className="group/dot absolute top-1/2 -translate-y-1/2"
-                      style={{ left: `${pct}%`, transform: 'translateX(-50%) translateY(-50%)' }}>
-                      <button
-                        className="block h-4 w-4 rounded-full bg-violet-500/70 border-2 border-violet-400/50 hover:bg-violet-400 hover:scale-125 transition"
-                        onClick={() => openEdit(movie)}
-                      />
-                      {/* Tooltip */}
-                      <div className="pointer-events-none absolute z-30 opacity-0 group-hover/dot:opacity-100 transition-opacity"
-                        style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6 }}>
-                        <div className="rounded-lg border border-white/10 bg-slate-800 px-2.5 py-1.5 shadow-xl" style={{ minWidth: 110 }}>
-                          <p className="text-center text-[10px] font-semibold text-white whitespace-nowrap">{movie.name}</p>
-                          {movie.director && <p className="text-center text-[9px] text-slate-400">{movie.director}</p>}
-                          <p className="text-center text-[9px] text-violet-400">{fmtDuration(movie.durationMinutes)}</p>
-                          {movie.rating != null && <p className="text-center text-[9px] text-yellow-400">★ {movie.rating}/10</p>}
-                        </div>
-                        <div className="mx-auto h-1.5 w-1.5 -translate-y-px rotate-45 border-b border-r border-white/10 bg-slate-800" />
+          <>
+            <CalendarHeatmap
+              start={tlRange.start}
+              end={tlRange.end}
+              today={todayStr()}
+              getCell={key => {
+                const list = moviesByDate[key];
+                if (!list || list.length === 0) return null;
+                const level = Math.min(list.length, 4);
+                return {
+                  colorClass: HEATMAP_LEVELS[level - 1],
+                  tooltip: (
+                    <div>
+                      <p className="text-center text-[10px] font-semibold text-white whitespace-nowrap">
+                        {parseDate(key).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        {' · '}{list.length} {list.length === 1 ? 'filme' : 'filmes'}
+                      </p>
+                      <div className="mt-1 space-y-0.5">
+                        {list.map(m => (
+                          <button key={m.id} onClick={() => openEdit(m)}
+                            className="block w-full max-w-[160px] truncate text-left text-[9px] text-violet-300 hover:text-violet-100">
+                            {m.name}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  ),
+                };
+              }}
+            />
+            <div className="mt-4 flex items-center gap-1.5 border-t border-white/5 pt-4 text-xs text-slate-500">
+              <span>Menos</span>
+              <span className="h-3 w-3 rounded-sm bg-slate-900/40" />
+              {HEATMAP_LEVELS.map(cls => <span key={cls} className={`h-3 w-3 rounded-sm ${cls}`} />)}
+              <span>Mais</span>
             </div>
-          </div>
+          </>
         )}
       </div>
 
