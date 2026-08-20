@@ -37,6 +37,7 @@ interface DailyData {
 
 type TabPeriod = 'hoje' | 'semana' | 'mes' | 'ano';
 type HeatLevel = 'none' | 'low' | 'mid' | 'full';
+type StatsLite = { water: number; steps: number; pages: number; gym: number; creatine: number; study: number; meditation: number };
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -398,12 +399,12 @@ export default function Page() {
     return () => unsub();
   }, [user, fetchDates]);
 
-  // Load month data eagerly — includes previous month for streaks and comparisons
+  // Load month data eagerly — includes 5 previous months for streaks and the monthly comparison table
   useEffect(() => {
     if (monthFetched || !user) return;
     const now = new Date();
-    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const start = dateStr(prevMonth);
+    const rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const start = dateStr(rangeStart);
     fetchRange(start, getTodayStr()).then(data => { setMonthData(data); setMonthFetched(true); });
   }, [monthFetched, user, fetchRange]);
 
@@ -1036,6 +1037,87 @@ export default function Page() {
                     />
                   </div>
                 )}
+
+                {/* Totais por mês */}
+                {monthFetched && (() => {
+                  const MONTHS_TO_COMPARE = 6;
+                  const monthCols = Array.from({ length: MONTHS_TO_COMPARE }, (_, i) => {
+                    const idx = MONTHS_TO_COMPARE - 1 - i;
+                    const ref = new Date(year, month - idx, 1);
+                    const cy = ref.getFullYear();
+                    const cm = ref.getMonth();
+                    const daysIn = new Date(cy, cm + 1, 0).getDate();
+                    const isCurrent = cy === year && cm === month;
+                    const elapsed = isCurrent ? daysElapsed : daysIn;
+                    const src = isCurrent ? mergedMonth : monthData;
+                    const stats = monthlyStats(src, cy, cm, elapsed);
+                    const projFactor = isCurrent && daysElapsed > 0 ? daysIn / daysElapsed : 1;
+                    const projected: StatsLite | null = isCurrent ? {
+                      water: Math.round(stats.water * projFactor),
+                      steps: Math.round(stats.steps * projFactor),
+                      pages: Math.round(stats.pages * projFactor),
+                      gym: Math.min(daysIn, Math.round(stats.gym * projFactor)),
+                      creatine: Math.min(daysIn, Math.round(stats.creatine * projFactor)),
+                      study: Math.round(stats.study * projFactor),
+                      meditation: Math.round(stats.meditation * projFactor),
+                    } : null;
+                    return {
+                      key: `${cy}-${cm}`,
+                      label: `${MONTH_PT[cm]}/${String(cy).slice(2)}`,
+                      isCurrent,
+                      stats,
+                      projected,
+                    };
+                  });
+
+                  const rows: {
+                    label: string; icon: typeof Droplet; color: string;
+                    get: (s: StatsLite) => number;
+                    fmt: (v: number) => string;
+                  }[] = [
+                    { label: 'Água consumida', icon: Droplet, color: 'text-blue-400', get: s => s.water, fmt: v => `${fmtNum(Math.round(v / 1000))} litros` },
+                    { label: 'Passos dados', icon: Footprints, color: 'text-emerald-400', get: s => s.steps, fmt: v => fmtNum(v) },
+                    { label: 'Páginas lidas', icon: BookOpen, color: 'text-amber-400', get: s => s.pages, fmt: v => `${v} páginas` },
+                    { label: 'Dias de treino', icon: Dumbbell, color: 'text-rose-400', get: s => s.gym, fmt: v => `${v} dias` },
+                    { label: 'Creatina tomada', icon: Pill, color: 'text-purple-400', get: s => s.creatine, fmt: v => `${v} dias` },
+                    { label: 'Horas de estudo', icon: GraduationCap, color: 'text-violet-400', get: s => s.study, fmt: v => fmtStudy(v) },
+                    { label: 'Meditação total', icon: Wind, color: 'text-teal-400', get: s => s.meditation, fmt: v => fmtStudy(v) },
+                  ];
+
+                  return (
+                    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                      <p className="mb-1 text-sm uppercase tracking-widest text-tamagochi-300">Totais por mês</p>
+                      <p className="mb-6 text-xs text-slate-500">Comparativo lado a lado — o mês atual mostra o total até hoje e a projeção para o fim do mês</p>
+                      <div className="overflow-x-auto">
+                        <p className="mb-2 text-[11px] text-slate-500 sm:hidden">deslize para o lado →</p>
+                        <div className="space-y-3 min-w-max">
+                          {rows.map(row => {
+                            const Icon = row.icon;
+                            return (
+                              <div key={row.label} className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+                                <div className="mb-3 flex items-center gap-2">
+                                  <Icon className={row.color} size={16} />
+                                  <span className="text-xs font-medium text-slate-300">{row.label}</span>
+                                </div>
+                                <div className="flex gap-5">
+                                  {monthCols.map(c => (
+                                    <div key={c.key} className="w-24 shrink-0">
+                                      <p className="mb-1 text-[11px] text-slate-500">{c.label}</p>
+                                      <p className="font-bold text-white">{row.fmt(row.get(c.stats))}</p>
+                                      {c.projected && (
+                                        <p className="mt-0.5 text-[11px] italic text-slate-500">proj. {row.fmt(row.get(c.projected))}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
