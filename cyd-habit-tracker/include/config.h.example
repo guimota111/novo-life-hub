@@ -15,14 +15,10 @@
 #define API_BASE      "https://SEU_BACKEND.hosted.app"
 #define DEVICE_TOKEN  "SEU_DEVICE_TOKEN"
 
-// -------------------- Incrementos por toque -----------
-#define INC_AGUA       250   // ml
-#define INC_ESTUDO     15    // min
-#define INC_MEDITACAO  5     // min
-#define INC_LEITURA    5     // paginas
-
 // -------------------- Comportamento -----------
-#define AUTO_SYNC_INTERVAL_MS  60000UL
-#define HTTP_TIMEOUT_MS        9000
-#define RECONNECT_INTERVAL_MS  15000UL
-#define BRIGHTNESS             255       // 0-255 (vitrine: brilho total)
+#define AUTO_SYNC_INTERVAL_MS     60000UL     // resumo de hoje
+#define HISTORY_SYNC_INTERVAL_MS  21600000UL  // historico (6h; tambem na virada do dia)
+#define HTTP_TIMEOUT_MS           9000
+#define RECONNECT_INTERVAL_MS     15000UL
+#define LONG_PRESS_MS             1200        // segurar p/ forcar sync
+#define BRIGHTNESS                255         // 0-255 (vitrine: brilho total)
