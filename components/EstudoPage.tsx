@@ -8,9 +8,10 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Plus, ChevronLeft, ChevronRight, X, Check, Clock,
-  RefreshCw, Trash2, GraduationCap, Settings,
+  RefreshCw, Trash2, GraduationCap, Settings, AlertTriangle,
 } from 'lucide-react';
 import CalendarHeatmap from '@/components/CalendarHeatmap';
+import StudyTimer, { FinishPayload } from '@/components/StudyTimer';
 
 // ─── Color palette ────────────────────────────────────────────────────────────
 
@@ -39,6 +40,11 @@ interface StudyArea {
   colorKey: ColorKey;
 }
 
+interface SessionTopic {
+  name: string;
+  minutes: number;
+}
+
 interface StudySession {
   id: string;
   areaId: string;
@@ -47,6 +53,8 @@ interface StudySession {
   date: string;            // YYYY-MM-DD
   durationMinutes: number;
   notes?: string;
+  topics?: SessionTopic[]; // sessoes cronometradas: um item por topico anotado
+  needsReview?: boolean;   // encerrada pelo atalho sem area definida
 }
 
 type ModalType = null | 'addArea' | 'addSession' | 'manageAreas' | 'sessionDetail';
@@ -198,6 +206,15 @@ export default function EstudoPage() {
       .filter(v => { if (seen.has(v)) return false; seen.add(v); return true; });
   }, [sessions, ssArea]);
 
+  const subAreasFor = useCallback((areaId: string) => {
+    if (!areaId) return [];
+    const seen = new Set<string>();
+    return sessions
+      .filter(s => s.areaId === areaId && s.subArea)
+      .map(s => s.subArea)
+      .filter(v => { if (seen.has(v)) return false; seen.add(v); return true; });
+  }, [sessions]);
+
   // timeline
   const tlRange = useMemo(
     () => getTimelineRange(tlScale, tlYear, tlMonth, sessions),
@@ -248,6 +265,13 @@ export default function EstudoPage() {
   }, [sessions]);
 
   const monthlyMax = Math.max(...monthlyHours.map(m => m.mins), 1);
+
+  // sessoes que o atalho encerrou sem area — aparecem em destaque para completar
+  const pendingReview = useMemo(
+    () => sessions.filter(s => s.needsReview && !s.areaId)
+      .sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions],
+  );
 
   // history (last 30, filterable)
   const historySessions = useMemo(() => {
@@ -331,6 +355,36 @@ export default function EstudoPage() {
     } finally { setSsSaving(false); }
   }
 
+  // Chamado pelo cronometro ao confirmar o resumo. Grava a sessao e soma o
+  // total do dia — mesma escrita do registro manual, so que com os topicos.
+  async function handleTimerFinish(p: FinishPayload) {
+    if (!user) return;
+    const topic = p.topics.map(t => t.name).join(' · ');
+    const ref = await addDoc(collection(db, 'users', user.uid, 'study_sessions'), {
+      areaId: p.areaId ?? '', subArea: p.subArea, topic,
+      topics: p.topics, date: p.date, durationMinutes: p.durationMinutes,
+      notes: p.notes || null, startedAt: p.startedAt, endedAt: p.endedAt,
+      source: 'timer', needsReview: !p.areaId, createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, 'users', user.uid, 'daily_logs', p.date), {
+      study_minutes: increment(p.durationMinutes), updatedAt: new Date(),
+    }, { merge: true });
+    setSessions(prev => [...prev, {
+      id: ref.id, areaId: p.areaId ?? '', subArea: p.subArea, topic,
+      topics: p.topics, date: p.date, durationMinutes: p.durationMinutes,
+      notes: p.notes || undefined, needsReview: !p.areaId,
+    }]);
+  }
+
+  // Completa uma sessao que o atalho encerrou sem area definida.
+  async function handleReviewSession(sessionId: string, areaId: string) {
+    if (!user || !areaId) return;
+    await setDoc(doc(db, 'users', user.uid, 'study_sessions', sessionId),
+      { areaId, needsReview: false }, { merge: true });
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, areaId, needsReview: false } : s));
+  }
+
   async function handleDeleteSession(sessionId: string) {
     if (!user) return;
     await deleteDoc(doc(db, 'users', user.uid, 'study_sessions', sessionId));
@@ -351,6 +405,42 @@ export default function EstudoPage() {
 
   return (
     <div className="space-y-5">
+
+      {/* Cronometro da sessao em andamento */}
+      <StudyTimer
+        areas={areas}
+        subAreaSuggestions={subAreasFor}
+        onFinish={handleTimerFinish}
+      />
+
+      {/* Sessoes encerradas pelo atalho sem area definida */}
+      {pendingReview.length > 0 && areas.length > 0 && (
+        <div className="rounded-[2rem] border border-amber-500/25 bg-amber-500/5 p-5">
+          <p className="flex items-center gap-2 text-sm font-medium text-amber-300">
+            <AlertTriangle size={15} />
+            {pendingReview.length} sess{pendingReview.length !== 1 ? 'ões' : 'ão'} sem grande área
+          </p>
+          <div className="mt-3 space-y-2">
+            {pendingReview.map(s => (
+              <div key={s.id}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-white/5 bg-slate-900/40 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-slate-200">{s.topic || 'Sem tópico'}</p>
+                  <p className="text-[10px] text-slate-600">
+                    {new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')} · {fmtDuration(s.durationMinutes)}
+                  </p>
+                </div>
+                <select className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-500/50"
+                  defaultValue=""
+                  onChange={e => handleReviewSession(s.id, e.target.value)}>
+                  <option value="">Definir área...</option>
+                  {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Actions row */}
       <div className="flex flex-wrap items-center gap-3">
@@ -792,7 +882,19 @@ export default function EstudoPage() {
                     <span className="text-xs text-slate-500">· {selectedSession.subArea}</span>
                   )}
                 </div>
-                <p className="font-semibold text-white">{selectedSession.topic}</p>
+                {selectedSession.topics && selectedSession.topics.length > 0 ? (
+                  <ul className="space-y-1">
+                    {selectedSession.topics.map((t, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm">
+                        <span className="text-xs text-slate-600">{i + 1}</span>
+                        <span className="flex-1 min-w-0 font-medium text-white">{t.name}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{fmtDuration(t.minutes)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="font-semibold text-white">{selectedSession.topic}</p>
+                )}
                 <div className="flex items-center gap-4 text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock size={11} /> {fmtDuration(selectedSession.durationMinutes)}

@@ -1,0 +1,66 @@
+# Publica no Firebase App Hosting a cada push na master.
+#
+# Pre-requisitos (uma vez so):
+#   1. Criar uma service account no projeto tamagochi-db43c com o papel
+#      "Firebase App Hosting Admin" (roles/firebaseapphosting.admin).
+#   2. Gerar uma chave JSON dela e salvar em
+#      Settings > Secrets and variables > Actions > New repository secret
+#      com o nome GCP_SA_KEY (colar o conteudo do arquivo JSON inteiro).
+#   3. No Console do Firebase, deixar os rollouts automaticos DESLIGADOS,
+#      senao cada push gera dois deploys (o automatico e o deste workflow).
+
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Um deploy por vez; se chegar um push novo durante o anterior, o antigo e cancelado.
+concurrency:
+  group: deploy-master
+  cancel-in-progress: true
+
+env:
+  FIREBASE_PROJECT: tamagochi-db43c
+  APPHOSTING_BACKEND: tamagochi-back-end
+
+jobs:
+  # Falha aqui evita um rollout quebrado - o build so roda no App Hosting depois que isto passa.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autentica no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install -g firebase-tools
+
+      # --git-commit garante que sai exatamente o commit deste push, e nao
+      # o topo da branch (que pode ter mudado enquanto o verify rodava).
+      - name: Cria o rollout no App Hosting
+        run: |
+          firebase apphosting:rollouts:create "$APPHOSTING_BACKEND" \
+            --git-commit "$GITHUB_SHA" \
+            --project "$FIREBASE_PROJECT" \
+            --force
