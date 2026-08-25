@@ -36,6 +36,7 @@ interface ReadingSession {
 type ModalType = null | 'addBook' | 'addSession' | 'finishBook' | 'editBook';
 type TlScale   = 'month' | 'quarter' | 'year' | 'all';
 type StatView  = 'week' | 'month' | 'year';
+type SessionInput = 'pages' | 'current';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -269,15 +270,19 @@ export default function LeituraPage() {
   const [bkSaving, setBkSaving] = useState(false);
 
   // ── add session form ──
-  const [ssBook,   setSsBook]   = useState('');
-  const [ssPages,  setSsPages]  = useState('');
-  const [ssDate,   setSsDate]   = useState(todayStr());
-  const [ssSaving, setSsSaving] = useState(false);
+  const [ssBook,    setSsBook]    = useState('');
+  const [ssPages,   setSsPages]   = useState('');
+  const [ssMode,    setSsMode]    = useState<SessionInput>('pages');
+  const [ssCurrent, setSsCurrent] = useState('');
+  const [ssDate,    setSsDate]    = useState(todayStr());
+  const [ssSaving,  setSsSaving]  = useState(false);
 
   // ── finish book form ──
-  const [fnRating, setFnRating] = useState('');
-  const [fnDate,   setFnDate]   = useState(todayStr());
-  const [fnSaving, setFnSaving] = useState(false);
+  const [fnRating,  setFnRating]  = useState('');
+  const [fnDate,    setFnDate]    = useState(todayStr());
+  const [fnPages,   setFnPages]   = useState('');
+  const [fnLogRest, setFnLogRest] = useState(true);
+  const [fnSaving,  setFnSaving]  = useState(false);
 
   // ── edit book form ──
   const [editName,   setEditName]   = useState('');
@@ -328,6 +333,25 @@ export default function LeituraPage() {
     () => books.find(b => b.id === selectedBookId) ?? null,
     [books, selectedBookId]
   );
+
+  // páginas já registradas do livro escolhido no modal de sessão
+  const ssBookRead = pagesByBook[ssBook] ?? 0;
+  const ssBookTotal = books.find(b => b.id === ssBook)?.totalPages ?? 0;
+
+  // quantas páginas a sessão vai registrar, conforme o modo de entrada
+  const ssComputedPages = useMemo(() => {
+    if (ssMode === 'pages') return ssPages === '' ? null : Number(ssPages);
+    if (ssCurrent === '') return null;
+    return Number(ssCurrent) - ssBookRead;
+  }, [ssMode, ssPages, ssCurrent, ssBookRead]);
+
+  const ssValid = ssComputedPages != null && Number.isFinite(ssComputedPages) && ssComputedPages > 0;
+
+  // páginas que faltam para terminar o livro selecionado
+  const fnRemaining = useMemo(() => {
+    if (!selectedBook) return 0;
+    return Math.max(0, selectedBook.totalPages - (pagesByBook[selectedBook.id] ?? 0));
+  }, [selectedBook, pagesByBook]);
 
   const bookById = useMemo(() => {
     const map: Record<string, Book> = {};
@@ -503,19 +527,25 @@ export default function LeituraPage() {
     } finally { setEditSaving(false); }
   }
 
+  // grava a sessão no Firestore, soma no log diário e atualiza o estado local
+  async function saveSession(bookId: string, pages: number, date: string) {
+    if (!user) return;
+    const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
+      bookId, pagesRead: pages, date, createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, 'users', user.uid, 'daily_logs', date), {
+      reading_pages: increment(pages), updatedAt: new Date(),
+    }, { merge: true });
+    setSessions(prev => [...prev, { id: ref.id, bookId, pagesRead: pages, date }]);
+  }
+
   async function handleAddSession() {
-    if (!user || !ssBook || !ssPages) return;
+    if (!user || !ssBook || !ssValid || ssComputedPages == null) return;
     setSsSaving(true);
     try {
-      const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
-        bookId: ssBook, pagesRead: Number(ssPages), date: ssDate, createdAt: Timestamp.now(),
-      });
-      await setDoc(doc(db, 'users', user.uid, 'daily_logs', ssDate), {
-        reading_pages: increment(Number(ssPages)), updatedAt: new Date(),
-      }, { merge: true });
-      setSessions(prev => [...prev, { id: ref.id, bookId: ssBook, pagesRead: Number(ssPages), date: ssDate }]);
+      await saveSession(ssBook, ssComputedPages, ssDate);
       setModal(null);
-      setSsBook(''); setSsPages(''); setSsDate(todayStr());
+      setSsBook(''); setSsPages(''); setSsCurrent(''); setSsMode('pages'); setSsDate(todayStr());
     } finally { setSsSaving(false); }
   }
 
@@ -542,6 +572,11 @@ export default function LeituraPage() {
     if (!user || !selectedBookId) return;
     setFnSaving(true);
     try {
+      // registra as páginas que faltavam como uma última sessão de leitura
+      const rest = Number(fnPages);
+      if (fnLogRest && Number.isFinite(rest) && rest > 0) {
+        await saveSession(selectedBookId, rest, fnDate);
+      }
       await updateDoc(doc(db, 'users', user.uid, 'books', selectedBookId), {
         status: 'finished', finishDate: fnDate,
         rating: fnRating ? Number(fnRating) : null,
@@ -552,7 +587,7 @@ export default function LeituraPage() {
           : b
       ));
       setModal(null);
-      setFnRating(''); setFnDate(todayStr());
+      setFnRating(''); setFnDate(todayStr()); setFnPages(''); setFnLogRest(true);
     } finally { setFnSaving(false); }
   }
 
@@ -577,9 +612,19 @@ export default function LeituraPage() {
     setModal('editBook');
   }
 
+  function openSession(bookId: string) {
+    setSsBook(bookId);
+    setSsPages(''); setSsCurrent(''); setSsMode('pages'); setSsDate(todayStr());
+    setModal('addSession');
+  }
+
   function openFinish(bookId: string) {
+    const book = books.find(b => b.id === bookId);
+    const rest = book ? Math.max(0, book.totalPages - (pagesByBook[bookId] ?? 0)) : 0;
     setSelectedBookId(bookId);
     setFnDate(todayStr());
+    setFnPages(String(rest));
+    setFnLogRest(rest > 0);
     setModal('finishBook');
   }
 
@@ -638,7 +683,7 @@ export default function LeituraPage() {
           className="flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20">
           <Plus size={15} /> Adicionar Livro
         </button>
-        <button onClick={() => { setSsBook(readingBooks[0]?.id ?? ''); setModal('addSession'); }}
+        <button onClick={() => openSession(readingBooks[0]?.id ?? '')}
           disabled={readingBooks.length === 0}
           className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-40">
           <BookOpen size={15} /> Registrar Leitura
@@ -1011,15 +1056,41 @@ export default function LeituraPage() {
                 {readingBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </Field>
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-1">
+              {([['pages', 'Páginas lidas'], ['current', 'Página atual']] as [SessionInput, string][]).map(([mode, label]) => (
+                <button key={mode} type="button" onClick={() => setSsMode(mode)}
+                  className={`rounded-xl py-1.5 text-xs font-medium transition ${
+                    ssMode === mode ? 'bg-sky-500/20 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Páginas lidas *">
-                <input className={inputCls} type="number" min={1} value={ssPages} onChange={e => setSsPages(e.target.value)} placeholder="30" />
-              </Field>
+              {ssMode === 'pages' ? (
+                <Field label="Páginas lidas *">
+                  <input className={inputCls} type="number" min={1} value={ssPages}
+                    onChange={e => setSsPages(e.target.value)} placeholder="30" />
+                </Field>
+              ) : (
+                <Field label="Estou na página *">
+                  <input className={inputCls} type="number" min={1} max={ssBookTotal || undefined} value={ssCurrent}
+                    onChange={e => setSsCurrent(e.target.value)} placeholder={String(ssBookRead + 30)} />
+                </Field>
+              )}
               <Field label="Data">
                 <input className={inputCls} type="date" value={ssDate} onChange={e => setSsDate(e.target.value)} />
               </Field>
             </div>
-            <button onClick={handleAddSession} disabled={!ssBook || !ssPages || ssSaving}
+            {ssBook && ssMode === 'current' && (
+              <p className={`text-xs ${ssComputedPages != null && !ssValid ? 'text-rose-400' : 'text-slate-400'}`}>
+                {ssComputedPages == null
+                  ? `Você já registrou até a página ${ssBookRead}${ssBookTotal ? ` de ${ssBookTotal}` : ''}.`
+                  : ssValid
+                    ? `${ssComputedPages} página${ssComputedPages === 1 ? '' : 's'} lida${ssComputedPages === 1 ? '' : 's'} (da ${ssBookRead + 1} até a ${ssBookRead + ssComputedPages}).`
+                    : `Você já registrou até a página ${ssBookRead}. Informe uma página maior que ${ssBookRead}.`}
+              </p>
+            )}
+            <button onClick={handleAddSession} disabled={!ssBook || !ssValid || ssSaving}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50">
               {ssSaving ? 'Salvando...' : <><Check size={14} /> Registrar</>}
             </button>
@@ -1039,6 +1110,32 @@ export default function LeituraPage() {
                 <input className={inputCls} type="date" value={fnDate} onChange={e => setFnDate(e.target.value)} />
               </Field>
             </div>
+
+            {fnRemaining > 0 ? (
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                <label className="flex items-start gap-2.5 text-xs text-slate-300">
+                  <input type="checkbox" className="mt-0.5 accent-emerald-500"
+                    checked={fnLogRest} onChange={e => setFnLogRest(e.target.checked)} />
+                  <span>
+                    Registrar as páginas que faltavam como uma sessão de leitura
+                    <span className="mt-0.5 block text-slate-500">
+                      Faltam {fnRemaining} de {selectedBook.totalPages} páginas.
+                    </span>
+                  </span>
+                </label>
+                {fnLogRest && (
+                  <Field label="Páginas a registrar">
+                    <input className={inputCls} type="number" min={1} value={fnPages}
+                      onChange={e => setFnPages(e.target.value)} />
+                  </Field>
+                )}
+              </div>
+            ) : (
+              <p className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-400">
+                Todas as {selectedBook.totalPages} páginas já estão registradas.
+              </p>
+            )}
+
             <button onClick={handleFinishBook} disabled={fnSaving}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/15 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50">
               {fnSaving ? 'Salvando...' : <><Check size={14} /> Marcar como lido</>}
@@ -1102,7 +1199,7 @@ export default function LeituraPage() {
 
             <div className="flex gap-2 pt-1">
               {editStatus === 'reading' && (
-                <button onClick={() => { setSsBook(selectedBook.id); setModal('addSession'); }}
+                <button onClick={() => openSession(selectedBook.id)}
                   className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 hover:bg-sky-500/20 transition">
                   + Sessão
                 </button>
