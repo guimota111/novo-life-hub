@@ -294,6 +294,7 @@ export default function LeituraPage() {
   const [editStatus, setEditStatus] = useState<'reading' | 'finished'>('reading');
   const [editFinish, setEditFinish] = useState('');
   const [editRating, setEditRating] = useState('');
+  const [editLogRest, setEditLogRest] = useState(true);
   const [editSaving, setEditSaving] = useState(false);
 
   // ── load ──────────────────────────────────────────────────────────────────
@@ -346,6 +347,15 @@ export default function LeituraPage() {
   }, [ssMode, ssPages, ssCurrent, ssBookRead]);
 
   const ssValid = ssComputedPages != null && Number.isFinite(ssComputedPages) && ssComputedPages > 0;
+
+  // páginas que faltariam ao finalizar pelo modal de edição (usa o total digitado no form)
+  const editRemaining = useMemo(() => {
+    if (!selectedBook) return 0;
+    return Math.max(0, Number(editPages || 0) - (pagesByBook[selectedBook.id] ?? 0));
+  }, [selectedBook, editPages, pagesByBook]);
+
+  // só oferece registrar quando o livro está saindo de "lendo" para "finalizado"
+  const editFinishing = selectedBook?.status === 'reading' && editStatus === 'finished';
 
   // páginas que faltam para terminar o livro selecionado
   const fnRemaining = useMemo(() => {
@@ -506,6 +516,10 @@ export default function LeituraPage() {
         finishDate: editStatus === 'finished' ? editFinish : null,
         rating: editStatus === 'finished' && editRating ? Number(editRating) : null,
       };
+      // finalizar pela edição também registra as páginas que faltavam
+      if (editFinishing && editLogRest && editRemaining > 0) {
+        await saveSession(selectedBookId, editRemaining, editFinish);
+      }
       await updateDoc(doc(db, 'users', user.uid, 'books', selectedBookId), updates);
       setBooks(prev => prev.map(b =>
         b.id === selectedBookId
@@ -609,6 +623,7 @@ export default function LeituraPage() {
     setEditStatus(book.status);
     setEditFinish(book.finishDate ?? todayStr());
     setEditRating(book.rating != null ? String(book.rating) : '');
+    setEditLogRest(true);
     setModal('editBook');
   }
 
@@ -633,7 +648,11 @@ export default function LeituraPage() {
     return <div className="flex h-48 items-center justify-center text-slate-500">Carregando...</div>;
   }
 
-  const readingBooks = books.filter(b => b.status === 'reading');
+  const readingBooks  = books.filter(b => b.status === 'reading');
+  // livros finalizados tambem podem receber sessoes, para corrigir paginas esquecidas
+  const finishedBooks = books
+    .filter(b => b.status === 'finished')
+    .sort((a, b) => (b.finishDate ?? '').localeCompare(a.finishDate ?? ''));
   const bookBarH = 40;
 
   function renderSessionRow(s: ReadingSession, opts: { showBook: boolean }) {
@@ -687,7 +706,7 @@ export default function LeituraPage() {
           <span className="hidden sm:inline">Adicionar Livro</span>
         </button>
         <button onClick={() => openSession(readingBooks[0]?.id ?? '')}
-          disabled={readingBooks.length === 0}
+          disabled={books.length === 0}
           className="flex flex-1 min-w-0 items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[13px] font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-40 sm:flex-none sm:px-4 sm:text-sm">
           <BookOpen size={15} className="shrink-0" />
           <span className="sm:hidden">Registrar</span>
@@ -1059,7 +1078,16 @@ export default function LeituraPage() {
             <Field label="Livro *">
               <select className={inputCls} value={ssBook} onChange={e => setSsBook(e.target.value)}>
                 <option value="">Selecione...</option>
-                {readingBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                {readingBooks.length > 0 && (
+                  <optgroup label="Lendo">
+                    {readingBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </optgroup>
+                )}
+                {finishedBooks.length > 0 && (
+                  <optgroup label="Finalizados">
+                    {finishedBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </optgroup>
+                )}
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-1">
@@ -1186,6 +1214,16 @@ export default function LeituraPage() {
                     value={editRating} onChange={e => setEditRating(e.target.value)} placeholder="8.5" />
                 </Field>
               </div>
+            )}
+            {editFinishing && editRemaining > 0 && (
+              <label className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300">
+                <input type="checkbox" className="mt-0.5 accent-emerald-500"
+                  checked={editLogRest} onChange={e => setEditLogRest(e.target.checked)} />
+                <span>
+                  Registrar as {editRemaining} páginas que faltavam como uma sessão de leitura
+                  <span className="mt-0.5 block text-slate-500">Na data de finalização.</span>
+                </span>
+              </label>
             )}
             <Field label="URL da capa (opcional)">
               <input className={inputCls} value={editCover} onChange={e => setEditCover(e.target.value)} placeholder="https://..." />
