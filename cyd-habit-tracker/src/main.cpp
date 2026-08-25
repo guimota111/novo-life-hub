@@ -556,6 +556,18 @@ void setup() {
   renderAll();                                 // mostra o cache na hora
 
   WiFi.mode(WIFI_STA);
+  // diagnostico: reason 15/202 = senha errada; 201 = rede nao encontrada
+  WiFi.onEvent([](WiFiEvent_t e, WiFiEventInfo_t info) {
+    Serial.printf("[wifi] desconectado de '%.*s' reason=%d\n",
+      info.wifi_sta_disconnected.ssid_len, (const char*)info.wifi_sta_disconnected.ssid,
+      info.wifi_sta_disconnected.reason);
+  }, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  // diagnostico: o ESP32 so enxerga 2.4GHz - se o hotspot nao aparecer
+  // aqui, ative "Maximizar Compatibilidade" no iPhone
+  int n = WiFi.scanNetworks();
+  Serial.printf("[wifi] scan: %d redes\n", n);
+  for (int i = 0; i < n; i++)
+    Serial.printf("   %-28s rssi=%d ch=%d\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i));
   wifiMulti.addAP(WIFI_SSID,  WIFI_PASSWORD);
   wifiMulti.addAP(WIFI_SSID2, WIFI_PASSWORD2);
   if (connectWiFi()) {
