@@ -36,6 +36,7 @@ interface ReadingSession {
 type ModalType = null | 'addBook' | 'addSession' | 'finishBook' | 'editBook';
 type TlScale   = 'month' | 'quarter' | 'year' | 'all';
 type StatView  = 'week' | 'month' | 'year';
+type SessionInput = 'pages' | 'current';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -269,15 +270,19 @@ export default function LeituraPage() {
   const [bkSaving, setBkSaving] = useState(false);
 
   // ── add session form ──
-  const [ssBook,   setSsBook]   = useState('');
-  const [ssPages,  setSsPages]  = useState('');
-  const [ssDate,   setSsDate]   = useState(todayStr());
-  const [ssSaving, setSsSaving] = useState(false);
+  const [ssBook,    setSsBook]    = useState('');
+  const [ssPages,   setSsPages]   = useState('');
+  const [ssMode,    setSsMode]    = useState<SessionInput>('pages');
+  const [ssCurrent, setSsCurrent] = useState('');
+  const [ssDate,    setSsDate]    = useState(todayStr());
+  const [ssSaving,  setSsSaving]  = useState(false);
 
   // ── finish book form ──
-  const [fnRating, setFnRating] = useState('');
-  const [fnDate,   setFnDate]   = useState(todayStr());
-  const [fnSaving, setFnSaving] = useState(false);
+  const [fnRating,  setFnRating]  = useState('');
+  const [fnDate,    setFnDate]    = useState(todayStr());
+  const [fnPages,   setFnPages]   = useState('');
+  const [fnLogRest, setFnLogRest] = useState(true);
+  const [fnSaving,  setFnSaving]  = useState(false);
 
   // ── edit book form ──
   const [editName,   setEditName]   = useState('');
@@ -328,6 +333,25 @@ export default function LeituraPage() {
     () => books.find(b => b.id === selectedBookId) ?? null,
     [books, selectedBookId]
   );
+
+  // páginas já registradas do livro escolhido no modal de sessão
+  const ssBookRead = pagesByBook[ssBook] ?? 0;
+  const ssBookTotal = books.find(b => b.id === ssBook)?.totalPages ?? 0;
+
+  // quantas páginas a sessão vai registrar, conforme o modo de entrada
+  const ssComputedPages = useMemo(() => {
+    if (ssMode === 'pages') return ssPages === '' ? null : Number(ssPages);
+    if (ssCurrent === '') return null;
+    return Number(ssCurrent) - ssBookRead;
+  }, [ssMode, ssPages, ssCurrent, ssBookRead]);
+
+  const ssValid = ssComputedPages != null && Number.isFinite(ssComputedPages) && ssComputedPages > 0;
+
+  // páginas que faltam para terminar o livro selecionado
+  const fnRemaining = useMemo(() => {
+    if (!selectedBook) return 0;
+    return Math.max(0, selectedBook.totalPages - (pagesByBook[selectedBook.id] ?? 0));
+  }, [selectedBook, pagesByBook]);
 
   const bookById = useMemo(() => {
     const map: Record<string, Book> = {};
@@ -503,19 +527,25 @@ export default function LeituraPage() {
     } finally { setEditSaving(false); }
   }
 
+  // grava a sessão no Firestore, soma no log diário e atualiza o estado local
+  async function saveSession(bookId: string, pages: number, date: string) {
+    if (!user) return;
+    const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
+      bookId, pagesRead: pages, date, createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, 'users', user.uid, 'daily_logs', date), {
+      reading_pages: increment(pages), updatedAt: new Date(),
+    }, { merge: true });
+    setSessions(prev => [...prev, { id: ref.id, bookId, pagesRead: pages, date }]);
+  }
+
   async function handleAddSession() {
-    if (!user || !ssBook || !ssPages) return;
+    if (!user || !ssBook || !ssValid || ssComputedPages == null) return;
     setSsSaving(true);
     try {
-      const ref = await addDoc(collection(db, 'users', user.uid, 'reading_sessions'), {
-        bookId: ssBook, pagesRead: Number(ssPages), date: ssDate, createdAt: Timestamp.now(),
-      });
-      await setDoc(doc(db, 'users', user.uid, 'daily_logs', ssDate), {
-        reading_pages: increment(Number(ssPages)), updatedAt: new Date(),
-      }, { merge: true });
-      setSessions(prev => [...prev, { id: ref.id, bookId: ssBook, pagesRead: Number(ssPages), date: ssDate }]);
+      await saveSession(ssBook, ssComputedPages, ssDate);
       setModal(null);
-      setSsBook(''); setSsPages(''); setSsDate(todayStr());
+      setSsBook(''); setSsPages(''); setSsCurrent(''); setSsMode('pages'); setSsDate(todayStr());
     } finally { setSsSaving(false); }
   }
 
@@ -542,6 +572,11 @@ export default function LeituraPage() {
     if (!user || !selectedBookId) return;
     setFnSaving(true);
     try {
+      // registra as páginas que faltavam como uma última sessão de leitura
+      const rest = Number(fnPages);
+      if (fnLogRest && Number.isFinite(rest) && rest > 0) {
+        await saveSession(selectedBookId, rest, fnDate);
+      }
       await updateDoc(doc(db, 'users', user.uid, 'books', selectedBookId), {
         status: 'finished', finishDate: fnDate,
         rating: fnRating ? Number(fnRating) : null,
@@ -552,7 +587,7 @@ export default function LeituraPage() {
           : b
       ));
       setModal(null);
-      setFnRating(''); setFnDate(todayStr());
+      setFnRating(''); setFnDate(todayStr()); setFnPages(''); setFnLogRest(true);
     } finally { setFnSaving(false); }
   }
 
@@ -577,9 +612,19 @@ export default function LeituraPage() {
     setModal('editBook');
   }
 
+  function openSession(bookId: string) {
+    setSsBook(bookId);
+    setSsPages(''); setSsCurrent(''); setSsMode('pages'); setSsDate(todayStr());
+    setModal('addSession');
+  }
+
   function openFinish(bookId: string) {
+    const book = books.find(b => b.id === bookId);
+    const rest = book ? Math.max(0, book.totalPages - (pagesByBook[bookId] ?? 0)) : 0;
     setSelectedBookId(bookId);
     setFnDate(todayStr());
+    setFnPages(String(rest));
+    setFnLogRest(rest > 0);
     setModal('finishBook');
   }
 
@@ -596,9 +641,10 @@ export default function LeituraPage() {
     const confirming = ssConfirmDel === s.id;
     const busy       = ssDeleting === s.id;
     return (
-      <div key={s.id} className="flex items-center gap-3 rounded-xl bg-slate-900/60 px-3 py-2">
+      <div key={s.id} className="flex items-center gap-2 rounded-xl bg-slate-900/60 px-2.5 py-2 sm:gap-3 sm:px-3">
         <span className="shrink-0 text-xs text-slate-400 tabular-nums">
-          {new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+          <span className="sm:hidden">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+          <span className="hidden sm:inline">{new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
         </span>
         {opts.showBook && (
           <span className={`flex-1 min-w-0 truncate text-xs ${book ? 'text-slate-300' : 'italic text-red-400/70'}`}>
@@ -633,39 +679,44 @@ export default function LeituraPage() {
     <div className="space-y-5">
 
       {/* Actions row */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <button onClick={() => setModal('addBook')}
-          className="flex items-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/20">
-          <Plus size={15} /> Adicionar Livro
+          className="flex flex-1 min-w-0 items-center justify-center gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-[13px] font-medium text-sky-300 transition hover:bg-sky-500/20 sm:flex-none sm:px-4 sm:text-sm">
+          <Plus size={15} className="shrink-0" />
+          <span className="sm:hidden">Novo livro</span>
+          <span className="hidden sm:inline">Adicionar Livro</span>
         </button>
-        <button onClick={() => { setSsBook(readingBooks[0]?.id ?? ''); setModal('addSession'); }}
+        <button onClick={() => openSession(readingBooks[0]?.id ?? '')}
           disabled={readingBooks.length === 0}
-          className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-40">
-          <BookOpen size={15} /> Registrar Leitura
+          className="flex flex-1 min-w-0 items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[13px] font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:pointer-events-none disabled:opacity-40 sm:flex-none sm:px-4 sm:text-sm">
+          <BookOpen size={15} className="shrink-0" />
+          <span className="sm:hidden">Registrar</span>
+          <span className="hidden sm:inline">Registrar Leitura</span>
         </button>
         <button onClick={loadData}
-          className="ml-auto flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-300">
-          <RefreshCw size={12} /> Atualizar
+          title="Atualizar"
+          className="ml-auto flex shrink-0 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-medium text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-300 sm:px-4 sm:py-2">
+          <RefreshCw size={12} /> <span className="hidden sm:inline">Atualizar</span>
         </button>
       </div>
 
       {/* Currently reading */}
       {readingBooks.length > 0 && (
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl">
+        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-5">
           <p className="mb-4 text-xs font-medium uppercase tracking-widest text-slate-500">Lendo agora</p>
           <div className="space-y-3">
             {readingBooks.map(book => {
               const read = pagesByBook[book.id] ?? 0;
               const pct  = Math.min(read / book.totalPages * 100, 100);
               return (
-                <div key={book.id} className="flex items-center gap-4">
+                <div key={book.id} className="flex items-center gap-3 sm:gap-4">
                   {book.coverUrl
                     ? <img src={book.coverUrl} alt="" className="h-12 w-9 rounded-md object-cover shrink-0" />
                     : <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md bg-sky-500/20 text-base font-bold text-sky-300">{book.name[0]}</div>
                   }
                   <div className="flex-1 min-w-0">
                     <button onClick={() => openEdit(book)}
-                      className="text-sm font-medium text-white hover:text-sky-300 transition truncate block text-left">
+                      className="block w-full truncate text-left text-sm font-medium text-white transition hover:text-sky-300">
                       {book.name}
                     </button>
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -682,7 +733,7 @@ export default function LeituraPage() {
                     </div>
                   </div>
                   <button onClick={() => openFinish(book.id)}
-                    className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/20">
+                    className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/20 sm:px-3">
                     Finalizar
                   </button>
                 </div>
@@ -693,8 +744,8 @@ export default function LeituraPage() {
       )}
 
       {/* Reading sessions */}
-      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-3">
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex items-center gap-2">
             <History size={14} className="text-slate-500" />
             <p className="text-xs font-medium uppercase tracking-widest text-slate-500">Sessões de leitura</p>
@@ -717,7 +768,7 @@ export default function LeituraPage() {
         {showSessions && sessions.length > 0 && (
           <div className="mt-4 border-t border-white/5 pt-4">
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <select className={`${inputCls} max-w-[240px]`} value={ssFilter}
+              <select className={`${inputCls} w-full sm:max-w-[240px]`} value={ssFilter}
                 onChange={e => { setSsFilter(e.target.value); setSsLimit(20); setSsConfirmDel(null); }}>
                 <option value="all">Todos os livros</option>
                 {books.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -747,13 +798,13 @@ export default function LeituraPage() {
       </div>
 
       {/* Timeline */}
-      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-6">
         {/* Scale tabs + navigation */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="flex gap-1 rounded-2xl border border-white/5 bg-slate-900/40 p-1">
             {(['month','quarter','year','all'] as TlScale[]).map(s => (
               <button key={s} onClick={() => setTlScale(s)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                className={`rounded-xl px-2.5 py-1.5 text-xs font-medium transition sm:px-3 ${
                   tlScale === s ? 'bg-sky-500/20 text-sky-300' : 'text-slate-500 hover:text-slate-300'
                 }`}>
                 {s === 'month' ? 'Mês' : s === 'quarter' ? 'Trimestre' : s === 'year' ? 'Ano' : 'Tudo'}
@@ -762,12 +813,12 @@ export default function LeituraPage() {
           </div>
 
           {tlScale !== 'all' && (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="ml-auto flex items-center gap-2">
               <button onClick={tlPrev}
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 transition hover:border-sky-500/30 hover:text-white">
                 <ChevronLeft size={15} />
               </button>
-              <span className="min-w-[120px] text-center text-sm font-medium text-slate-200">{tlLabel}</span>
+              <span className="min-w-[92px] text-center text-sm font-medium text-slate-200 sm:min-w-[120px]">{tlLabel}</span>
               <button onClick={tlNext} disabled={tlAtPresent}
                 className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 text-slate-400 transition hover:border-sky-500/30 hover:text-white disabled:pointer-events-none disabled:opacity-30">
                 <ChevronRight size={15} />
@@ -786,7 +837,7 @@ export default function LeituraPage() {
         ) : (
           <div>
             {/* X-axis ticks */}
-            <div className="relative mb-2 ml-28 h-5 border-b border-white/5">
+            <div className="relative mb-2 ml-20 h-5 border-b border-white/5 sm:ml-28">
               {tlTicks.map((tick, i) => (
                 <span key={i}
                   className="absolute -translate-x-1/2 text-[9px] text-slate-600"
@@ -805,7 +856,7 @@ export default function LeituraPage() {
                 return (
                   <div key={book.id} className="flex items-center gap-2" style={{ height: bookBarH }}>
                     <button onClick={() => openEdit(book)}
-                      className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate hover:text-sky-300 transition pr-2">
+                      className="w-20 shrink-0 truncate pr-2 text-right text-[11px] text-slate-400 transition hover:text-sky-300 sm:w-28">
                       {book.name}
                     </button>
                     <div className="relative flex-1 h-7">
@@ -816,8 +867,8 @@ export default function LeituraPage() {
                         title={`${book.name}${book.finishDate ? ` · Finalizado ${book.finishDate}` : ' · Lendo'}`}
                       >
                         {widthPct > 8 && (
-                          <span className="absolute inset-0 flex items-center justify-center truncate px-2 text-[10px] font-medium">
-                            {book.name}
+                          <span className="absolute inset-0 flex items-center justify-center px-2">
+                            <span className="truncate text-[10px] font-medium">{book.name}</span>
                           </span>
                         )}
                       </div>
@@ -837,7 +888,7 @@ export default function LeituraPage() {
       </div>
 
       {/* Statistics */}
-      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-6">
         <p className="mb-4 text-xs font-medium uppercase tracking-widest text-slate-500">Estatísticas</p>
 
         <div className="mb-5 flex gap-1 rounded-2xl border border-white/5 bg-slate-900/40 p-1">
@@ -902,8 +953,8 @@ export default function LeituraPage() {
       </div>
 
       {/* Finished books per year */}
-      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex items-center gap-2">
             <button onClick={() => setShowFinishedYear(y => y - 1)}
               className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/10 text-slate-400 hover:text-white transition">
@@ -1011,15 +1062,41 @@ export default function LeituraPage() {
                 {readingBooks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </Field>
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-1">
+              {([['pages', 'Páginas lidas'], ['current', 'Página atual']] as [SessionInput, string][]).map(([mode, label]) => (
+                <button key={mode} type="button" onClick={() => setSsMode(mode)}
+                  className={`rounded-xl py-1.5 text-xs font-medium transition ${
+                    ssMode === mode ? 'bg-sky-500/20 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Páginas lidas *">
-                <input className={inputCls} type="number" min={1} value={ssPages} onChange={e => setSsPages(e.target.value)} placeholder="30" />
-              </Field>
+              {ssMode === 'pages' ? (
+                <Field label="Páginas lidas *">
+                  <input className={inputCls} type="number" min={1} value={ssPages}
+                    onChange={e => setSsPages(e.target.value)} placeholder="30" />
+                </Field>
+              ) : (
+                <Field label="Estou na página *">
+                  <input className={inputCls} type="number" min={1} max={ssBookTotal || undefined} value={ssCurrent}
+                    onChange={e => setSsCurrent(e.target.value)} placeholder={String(ssBookRead + 30)} />
+                </Field>
+              )}
               <Field label="Data">
                 <input className={inputCls} type="date" value={ssDate} onChange={e => setSsDate(e.target.value)} />
               </Field>
             </div>
-            <button onClick={handleAddSession} disabled={!ssBook || !ssPages || ssSaving}
+            {ssBook && ssMode === 'current' && (
+              <p className={`text-xs ${ssComputedPages != null && !ssValid ? 'text-rose-400' : 'text-slate-400'}`}>
+                {ssComputedPages == null
+                  ? `Você já registrou até a página ${ssBookRead}${ssBookTotal ? ` de ${ssBookTotal}` : ''}.`
+                  : ssValid
+                    ? `${ssComputedPages} página${ssComputedPages === 1 ? '' : 's'} lida${ssComputedPages === 1 ? '' : 's'} (da ${ssBookRead + 1} até a ${ssBookRead + ssComputedPages}).`
+                    : `Você já registrou até a página ${ssBookRead}. Informe uma página maior que ${ssBookRead}.`}
+              </p>
+            )}
+            <button onClick={handleAddSession} disabled={!ssBook || !ssValid || ssSaving}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50">
               {ssSaving ? 'Salvando...' : <><Check size={14} /> Registrar</>}
             </button>
@@ -1039,6 +1116,32 @@ export default function LeituraPage() {
                 <input className={inputCls} type="date" value={fnDate} onChange={e => setFnDate(e.target.value)} />
               </Field>
             </div>
+
+            {fnRemaining > 0 ? (
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                <label className="flex items-start gap-2.5 text-xs text-slate-300">
+                  <input type="checkbox" className="mt-0.5 accent-emerald-500"
+                    checked={fnLogRest} onChange={e => setFnLogRest(e.target.checked)} />
+                  <span>
+                    Registrar as páginas que faltavam como uma sessão de leitura
+                    <span className="mt-0.5 block text-slate-500">
+                      Faltam {fnRemaining} de {selectedBook.totalPages} páginas.
+                    </span>
+                  </span>
+                </label>
+                {fnLogRest && (
+                  <Field label="Páginas a registrar">
+                    <input className={inputCls} type="number" min={1} value={fnPages}
+                      onChange={e => setFnPages(e.target.value)} />
+                  </Field>
+                )}
+              </div>
+            ) : (
+              <p className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-400">
+                Todas as {selectedBook.totalPages} páginas já estão registradas.
+              </p>
+            )}
+
             <button onClick={handleFinishBook} disabled={fnSaving}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/15 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50">
               {fnSaving ? 'Salvando...' : <><Check size={14} /> Marcar como lido</>}
@@ -1102,7 +1205,7 @@ export default function LeituraPage() {
 
             <div className="flex gap-2 pt-1">
               {editStatus === 'reading' && (
-                <button onClick={() => { setSsBook(selectedBook.id); setModal('addSession'); }}
+                <button onClick={() => openSession(selectedBook.id)}
                   className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300 hover:bg-sky-500/20 transition">
                   + Sessão
                 </button>
