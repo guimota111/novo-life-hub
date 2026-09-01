@@ -139,7 +139,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-5 shadow-2xl sm:p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>

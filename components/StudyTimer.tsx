@@ -348,7 +348,7 @@ export default function StudyTimer({ areas, subAreaSuggestions, onFinish }: Prop
       {finishing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) setFinishing(false); }}>
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-5 shadow-2xl sm:p-6">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-base font-semibold text-white">Terminar sessão</h2>
               <button onClick={() => setFinishing(false)} className="text-slate-400 transition hover:text-white">

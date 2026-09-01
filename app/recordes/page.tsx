@@ -14,7 +14,7 @@ import {
   Trophy, Medal, Crown, Star, Target, Zap, HeartPulse, Droplet, Flame,
   BookOpen, Film, Pill, GraduationCap, Footprints, Sparkles, Brain,
   Dumbbell, Rocket, Coffee, Sun, Shield, Gem, Activity, Timer, Moon,
-  Bell, BellOff, RefreshCw,
+  Bell, BellOff, RefreshCw, X,
   Heart, TrendingUp, Mountain, Layers, Repeat, CheckCircle2,
   Waves, Leaf, Swords, Ruler,
 } from 'lucide-react';
@@ -411,7 +411,7 @@ export default function RecordesPage() {
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
 
-        <section className="flex-1 space-y-5">
+        <section className="min-w-0 flex-1 space-y-5">
 
           {/* Header */}
           <header className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
@@ -620,8 +620,9 @@ export default function RecordesPage() {
                       <span className="text-[8px] text-slate-700">sem dados</span>
                     )}
 
-                    {/* Tooltip — hover on desktop, tap-to-toggle on touch (no hover) */}
-                    <div className={`pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-[#0d1b2a] px-3 py-2 shadow-xl transition-opacity duration-150 group-hover:opacity-100 ${tooltipOpen ? 'opacity-100' : 'opacity-0'}`}>
+                    {/* Tooltip — só no desktop: no celular um troféu de borda ficaria
+                        metade fora da tela, então lá o detalhe vira a folha fixa abaixo. */}
+                    <div className={`pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 z-50 hidden w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-[#0d1b2a] px-3 py-2 shadow-xl transition-opacity duration-150 group-hover:opacity-100 sm:block ${tooltipOpen ? 'opacity-100' : 'opacity-0'}`}>
                       <p className={`mb-1 text-[10px] font-semibold uppercase tracking-widest ${style.text}`}>{t.cat}</p>
                       <p className="text-xs leading-snug text-slate-300">{t.req}</p>
                       {!t.canCheck && (
@@ -638,6 +639,38 @@ export default function RecordesPage() {
               <div className="fixed inset-0 z-0" onClick={() => setOpenTrophy(null)} />
             )}
           </div>
+
+          {/* Detalhe do troféu no celular — folha fixa acima da barra inferior */}
+          {openTrophy && (() => {
+            const t = TROPHIES.find(x => x.key === openTrophy);
+            if (!t) return null;
+            const style = CAT_STYLE[t.cat] ?? CAT_STYLE['Geral'];
+            const Icon = t.icon;
+            return (
+              <div className="fixed inset-x-3 bottom-[5.5rem] z-50 rounded-2xl border border-white/10 bg-[#0d1b2a] p-4 shadow-2xl sm:hidden">
+                <div className="flex items-start gap-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${style.iconBg}`}>
+                    <Icon size={16} className={style.text} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[10px] font-semibold uppercase tracking-widest ${style.text}`}>{t.cat}</p>
+                    <p className="text-sm font-semibold text-white">{t.nome}</p>
+                    <p className="mt-1 text-xs leading-snug text-slate-300">{t.req}</p>
+                    {!t.canCheck && (
+                      <p className="mt-1 text-[10px] text-slate-500">Requer dados não rastreados ainda</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setOpenTrophy(null)}
+                    aria-label="Fechar"
+                    className="-mr-1 -mt-1 shrink-0 p-1 text-slate-500 transition hover:text-white"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Push notification info card */}
           {permission !== 'granted' && permission !== 'unsupported' && (

@@ -210,14 +210,14 @@ export default function CalendarioPage() {
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
 
-        <section className="flex-1 space-y-6">
+        <section className="min-w-0 flex-1 space-y-6">
 
           {/* Header */}
-          <header className="flex flex-col items-start justify-between gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow backdrop-blur-xl sm:flex-row sm:items-center">
+          <header className="flex flex-col items-start justify-between gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:flex-row sm:items-center sm:p-8">
             <div>
               <div className="flex items-center gap-3">
-                <Calendar className="text-tamagochi-300" size={28} />
-                <h1 className="text-3xl font-semibold text-white">Calendário</h1>
+                <Calendar className="shrink-0 text-tamagochi-300" size={28} />
+                <h1 className="text-2xl font-semibold text-white sm:text-3xl">Calendário</h1>
               </div>
               <p className="mt-2 text-slate-400">Todos os hábitos, o ano inteiro.</p>
             </div>
@@ -239,7 +239,7 @@ export default function CalendarioPage() {
           <div className="grid gap-6 xl:grid-cols-[1fr_288px]">
 
             {/* Heatmap card */}
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+            <div className="min-w-0 rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-6">
 
               {loading ? (
                 <div className="space-y-4">
@@ -251,12 +251,13 @@ export default function CalendarioPage() {
                   ))}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="-mx-1 overflow-x-auto px-1">
+                  <p className="mb-2 text-[11px] text-slate-500 sm:hidden">deslize para o lado →</p>
                   <div className="min-w-max">
 
                     {/* Month labels row */}
                     <div className="mb-2 flex">
-                      <div className="w-28 shrink-0" />
+                      <div className="sticky left-0 z-10 w-24 shrink-0 bg-[#141c25] sm:w-28" />
                       <div className="flex gap-[3px]">
                         {yearWeeks.map((_, wi) => (
                           <div key={wi} className="w-2.5 shrink-0 text-[9px] leading-none text-slate-600">
@@ -276,12 +277,12 @@ export default function CalendarioPage() {
                         return (
                           <div key={h.key} className="flex items-center gap-3">
 
-                            {/* Habit label */}
-                            <div className="flex w-28 shrink-0 items-center gap-2">
+                            {/* Habit label — fica fixo à esquerda enquanto o heatmap rola no celular */}
+                            <div className="sticky left-0 z-10 flex w-24 shrink-0 items-center gap-2 bg-[#141c25] sm:w-28">
                               <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${h.iconBg}`}>
                                 <Icon size={12} className={h.textColor} />
                               </div>
-                              <span className="text-xs font-medium text-slate-400">{h.label}</span>
+                              <span className="truncate text-xs font-medium text-slate-400">{h.label}</span>
                             </div>
 
                             {/* Week columns */}
@@ -331,7 +332,7 @@ export default function CalendarioPage() {
 
                     {/* Day labels below (Mon / Wed / Fri) */}
                     <div className="mt-2 flex">
-                      <div className="w-28 shrink-0" />
+                      <div className="sticky left-0 z-10 w-24 shrink-0 bg-[#141c25] sm:w-28" />
                       <div className="flex gap-[3px]">
                         {yearWeeks.map((_, wi) => (
                           <div key={wi} className="flex w-2.5 flex-col gap-[3px]">

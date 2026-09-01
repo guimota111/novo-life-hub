@@ -116,7 +116,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-5 shadow-2xl sm:p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
@@ -710,8 +710,8 @@ export default function EstudoPage() {
               const c = getColor(area?.colorKey ?? 'cyan');
               return (
                 <div key={session.id}
-                  className="flex items-center gap-3 rounded-2xl border border-white/5 bg-slate-900/30 px-4 py-3">
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.dot}`} />
+                  className="flex items-start gap-3 rounded-2xl border border-white/5 bg-slate-900/30 px-3 py-3 sm:items-center sm:px-4">
+                  <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${c.dot} sm:mt-0`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-[10px] font-medium uppercase tracking-wide ${c.text}`}>{area?.name ?? '—'}</span>
@@ -720,9 +720,15 @@ export default function EstudoPage() {
                       )}
                     </div>
                     <p className="text-sm font-medium text-white truncate">{session.topic}</p>
+                    {/* No celular a duração/data não cabem ao lado do tópico */}
+                    <p className="mt-0.5 text-[11px] text-slate-500 sm:hidden">
+                      {fmtDuration(session.durationMinutes)}
+                      {' · '}
+                      {new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right">
+                    <div className="hidden text-right sm:block">
                       <p className="text-xs font-medium text-white">{fmtDuration(session.durationMinutes)}</p>
                       <p className="text-[10px] text-slate-600">
                         {new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
@@ -730,12 +736,14 @@ export default function EstudoPage() {
                     </div>
                     <button
                       onClick={() => { setSelectedSessionId(session.id); setModal('sessionDetail'); }}
-                      className="text-slate-700 hover:text-slate-400 transition">
-                      <Clock size={13} />
+                      aria-label="Ver detalhes da sessão"
+                      className="-m-1 p-1 text-slate-700 transition hover:text-slate-400">
+                      <Clock size={15} />
                     </button>
                     <button onClick={() => handleDeleteSession(session.id)}
-                      className="text-slate-700 hover:text-red-400 transition">
-                      <Trash2 size={13} />
+                      aria-label="Apagar sessão"
+                      className="-m-1 p-1 text-slate-700 transition hover:text-red-400">
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>

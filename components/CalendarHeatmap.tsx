@@ -79,22 +79,49 @@ export default function CalendarHeatmap({
     return labels;
   }, [columns]);
 
-  const renderCell = (key: string, date: Date) => {
+  // Um tooltip centrado na célula sai da tela nas colunas das pontas (no
+  // celular a tela tem pouco mais que a largura do próprio tooltip), então as
+  // primeiras/últimas colunas ancoram o tooltip pela borda em vez do centro.
+  // `edge` = quantas colunas de cada ponta não têm espaço para meio tooltip
+  // (~100px) à esquerda/direita; depende do passo entre colunas de cada modo.
+  const anchorFor = (colIndex: number, colCount: number, edge: number): 'start' | 'center' | 'end' => {
+    if (colCount <= 1) return 'center';
+    if (colIndex < edge) return 'start';
+    if (colIndex >= colCount - edge) return 'end';
+    return 'center';
+  };
+
+  // `fill`: a célula ocupa a largura da coluna do grid (modo mês, que se adapta
+  // à tela). Sem ele a célula tem lado fixo (contribution graph, que rola).
+  const renderCell = (
+    key: string, date: Date, anchor: 'start' | 'center' | 'end' = 'center', fill = false,
+  ) => {
     const inRange = date >= start && date <= end && key <= today;
     const cell = inRange ? getCell(key) : null;
     const cls = cell ? cell.colorClass : inRange ? emptyClass : 'bg-transparent';
+    const pos =
+      anchor === 'start' ? { left: 0 } :
+      anchor === 'end'   ? { right: 0 } :
+      { left: '50%', transform: 'translateX(-50%)' };
     return (
-      <div key={key} className="group/cell relative">
-        <div className={`rounded-[3px] ${cls}`} style={{ width: CELL, height: CELL }} />
+      <div key={key} className={`group/cell relative ${fill ? 'aspect-square' : ''}`}>
+        <div
+          className={`rounded-[3px] ${cls} ${fill ? 'h-full w-full' : ''}`}
+          style={fill ? undefined : { width: CELL, height: CELL }}
+        />
         {cell?.tooltip && (
           <div
             className="pointer-events-none absolute z-30 opacity-0 transition-opacity group-hover/cell:opacity-100 group-hover/cell:pointer-events-auto"
-            style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6 }}
+            style={{ bottom: '100%', marginBottom: 6, ...pos }}
           >
             <div className="rounded-lg border border-white/10 bg-slate-800 px-2.5 py-1.5 shadow-xl" style={{ minWidth: 120 }}>
               {cell.tooltip}
             </div>
-            <div className="mx-auto h-1.5 w-1.5 -translate-y-px rotate-45 border-b border-r border-white/10 bg-slate-800" />
+            <div
+              className={`h-1.5 w-1.5 -translate-y-px rotate-45 border-b border-r border-white/10 bg-slate-800 ${
+                anchor === 'start' ? 'ml-1.5' : anchor === 'end' ? 'ml-auto mr-1.5' : 'mx-auto'
+              }`}
+            />
           </div>
         )}
       </div>
@@ -102,21 +129,20 @@ export default function CalendarHeatmap({
   };
 
   if (isMonthGrid) {
-    // Calendário tradicional: semanas em linha, dias da semana no topo.
+    // Calendário tradicional: uma linha por semana, uma coluna por dia da
+    // semana (batendo com os rótulos do topo). As células acompanham a largura
+    // disponível, com um teto para não virarem quadrados enormes no desktop.
     return (
-      <div>
+      <div className="w-full max-w-[420px]">
         <div className="mb-1 grid grid-cols-7 gap-[3px]">
           {DAY_LETTERS.map((d, i) => (
             <div key={i} className="text-center text-[9px] text-slate-600">{d}</div>
           ))}
         </div>
         <div className="space-y-[3px]">
-          {Array.from({ length: 7 }, (_, row) => (
-            <div key={row} className="grid grid-cols-7 gap-[3px]">
-              {columns.map(col => {
-                const { date, key } = col[row];
-                return renderCell(key, date);
-              })}
+          {columns.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-[3px]">
+              {week.map(({ date, key }, di) => renderCell(key, date, anchorFor(di, 7, 3), true))}
             </div>
           ))}
         </div>
@@ -145,7 +171,7 @@ export default function CalendarHeatmap({
           </div>
           {columns.map((col, ci) => (
             <div key={ci} className="flex flex-col gap-[3px]">
-              {col.map(({ date, key }) => renderCell(key, date))}
+              {col.map(({ date, key }) => renderCell(key, date, anchorFor(ci, columns.length, 7)))}
             </div>
           ))}
         </div>

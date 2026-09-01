@@ -156,7 +156,7 @@ function QuickAdd({
           key={opt.value}
           onClick={() => onAdd(opt.value)}
           disabled={disabled}
-          className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-tamagochi-500/40 hover:bg-tamagochi-900/30 disabled:opacity-40"
+          className="rounded-xl border border-white/10 bg-slate-900/60 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-tamagochi-500/40 hover:bg-tamagochi-900/30 disabled:opacity-40 sm:px-3"
         >
           {label}{opt.label}
         </button>
@@ -224,7 +224,7 @@ function HabitRow({
 }) {
   return (
     <div className="py-4 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-4">
+      <div className="flex items-start gap-4 sm:items-center">
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${bubbleBg}`}>
           <Icon size={18} className={iconColor} />
         </span>
@@ -234,8 +234,14 @@ function HabitRow({
             {valueNode}
           </div>
           <ProgressBar value={pctVal} goal={100} color={barColor} />
+          {/* No celular a coluna da direita não cabe ao lado da barra: sequência
+              e comparativo com ontem descem para baixo dela. */}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:hidden">
+            <StreakBadge count={streak.count} capped={streak.capped} />
+            {yesterdayNode}
+          </div>
         </div>
-        <div className="flex w-24 shrink-0 flex-col items-end gap-1 sm:w-32">
+        <div className="hidden w-32 shrink-0 flex-col items-end gap-1 sm:flex">
           <StreakBadge count={streak.count} capped={streak.capped} />
           {yesterdayNode}
         </div>
@@ -773,13 +779,13 @@ export default function Page() {
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
 
-        <section className="flex-1 space-y-6">
+        <section className="min-w-0 flex-1 space-y-6">
           {/* Header */}
-          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow backdrop-blur-xl">
+          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-tamagochi-300">Tamagochi Me</p>
-                <h1 className="text-4xl font-semibold text-white">Visão do Dia</h1>
+                <h1 className="text-3xl font-semibold text-white sm:text-4xl">Visão do Dia</h1>
                 <p className="mt-1 capitalize text-slate-400">{formatDate()}</p>
               </div>
               <Link
@@ -808,7 +814,7 @@ export default function Page() {
 
           {/* ── HOJE ──────────────────────────────────────────────────────── */}
           {tab === 'hoje' && (
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-8">
 
               {/* Progresso geral do dia */}
               <div className="mb-6 border-b border-white/5 pb-6">
@@ -856,7 +862,7 @@ export default function Page() {
                       <button
                         onClick={subtractWater}
                         disabled={busy || todayData.water_ml === 0}
-                        className="rounded-xl border border-white/10 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-blue-500/30 hover:text-blue-300 disabled:opacity-30"
+                        className="rounded-xl border border-white/10 bg-slate-900/60 px-2.5 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-blue-500/30 hover:text-blue-300 disabled:opacity-30 sm:px-3"
                       >
                         −250ml
                       </button>
@@ -1339,7 +1345,7 @@ export default function Page() {
                       <table className="w-full min-w-[600px] text-sm">
                         <thead>
                           <tr>
-                            <th className="pb-3 text-left text-xs text-slate-400 font-medium w-28">Meta</th>
+                            <th className="sticky left-0 z-10 w-24 bg-[#141c25] pb-3 pr-2 text-left text-xs font-medium text-slate-400 sm:w-28">Meta</th>
                             {MONTH_PT.map(m => (
                               <th key={m} className="pb-3 text-center text-xs text-slate-400 font-medium px-1">{m}</th>
                             ))}
@@ -1358,7 +1364,7 @@ export default function Page() {
                             const Icon = row.icon;
                             return (
                               <tr key={row.label} className="border-t border-white/5">
-                                <td className="py-2 pr-3">
+                                <td className="sticky left-0 z-10 bg-[#141c25] py-2 pr-3">
                                   <span className={`flex items-center gap-1.5 text-xs font-medium ${row.color}`}>
                                     <Icon size={12} />
                                     {row.label}
