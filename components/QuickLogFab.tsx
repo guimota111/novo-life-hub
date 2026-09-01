@@ -153,10 +153,12 @@ export default function QuickLogFab() {
 
   return (
     <>
+      {/* z-40: o FAB fica sob os modais das páginas (z-50), senão no celular ele
+          cobre o botão de salvar dos formulários. */}
       <button
         onClick={() => setOpen(true)}
         aria-label="Registro rápido"
-        className="fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300 text-slate-950 shadow-glow transition hover:scale-105 md:bottom-6 md:right-6"
+        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300 text-slate-950 shadow-glow transition hover:scale-105 md:bottom-6 md:right-6"
       >
         <Zap size={22} />
       </button>
@@ -165,7 +167,7 @@ export default function QuickLogFab() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] p-5 shadow-2xl md:bottom-24 md:left-auto md:right-6 md:w-96 md:rounded-[2rem] md:border">
+          <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl md:bottom-24 md:left-auto md:right-6 md:w-96 md:rounded-[2rem] md:border">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap size={18} className="text-tamagochi-300" />

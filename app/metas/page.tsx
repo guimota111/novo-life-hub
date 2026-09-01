@@ -137,15 +137,15 @@ export default function MetasPage() {
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
 
-        <section className="flex-1 space-y-6">
-          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow backdrop-blur-xl">
+        <section className="min-w-0 flex-1 space-y-6">
+          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-8">
             <div className="flex items-center gap-4">
-              <div className="inline-flex h-14 w-14 items-center justify-center rounded-3xl bg-tamagochi-500/15">
-                <Target className="text-tamagochi-300" size={28} />
+              <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-3xl bg-tamagochi-500/15 sm:h-14 sm:w-14">
+                <Target className="text-tamagochi-300" size={24} />
               </div>
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-tamagochi-300">Configurações</p>
-                <h1 className="text-4xl font-semibold text-white">Metas Pessoais</h1>
+                <h1 className="text-3xl font-semibold text-white sm:text-4xl">Metas Pessoais</h1>
                 <p className="text-slate-400">Personalize suas metas diárias e semanais</p>
               </div>
             </div>
@@ -170,7 +170,7 @@ export default function MetasPage() {
                 return (
                   <div
                     key={field.key}
-                    className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl"
+                    className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-6"
                   >
                     <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
                       <div className="flex items-center gap-4 sm:w-64">
@@ -193,7 +193,7 @@ export default function MetasPage() {
                           onChange={e => set(field.key, Number(e.target.value))}
                           className="flex-1 accent-tamagochi-400"
                         />
-                        <div className="w-36 text-right">
+                        <div className="w-28 shrink-0 text-right sm:w-36">
                           <p className="text-xl font-bold text-white">{formatValue(field.key, val)}</p>
                           <p className="text-xs text-slate-400">{field.unit}</p>
                         </div>
@@ -219,16 +219,16 @@ export default function MetasPage() {
               })}
 
               {/* Creatina info card — always 1x/dia, não configurável */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
-                <div className="flex items-center gap-4">
+              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-6">
+                <div className="flex flex-wrap items-center gap-4">
                   <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-3xl border bg-purple-500/10 border-purple-500/20">
                     <Pill className="text-purple-400" size={20} />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-white">Creatina</p>
                     <p className="text-sm text-slate-400">Suplementação diária — meta fixa: 1x por dia</p>
                   </div>
-                  <div className="ml-auto rounded-2xl border border-purple-500/20 bg-purple-500/10 px-4 py-2">
+                  <div className="ml-auto shrink-0 rounded-2xl border border-purple-500/20 bg-purple-500/10 px-4 py-2">
                     <p className="text-sm font-medium text-purple-300">1x / dia</p>
                   </div>
                 </div>

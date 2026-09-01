@@ -221,12 +221,12 @@ export default function ExerciciosPage() {
     <main className="min-h-screen bg-[#08101a] text-slate-100">
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
-        <section className="flex-1 space-y-6">
+        <section className="min-w-0 flex-1 space-y-6">
 
           {/* Header */}
-          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-glow backdrop-blur-xl">
+          <header className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-8">
             <p className="text-sm uppercase tracking-[0.3em] text-tamagochi-300">Tamagochi Me</p>
-            <h1 className="text-4xl font-semibold text-white">Exercícios</h1>
+            <h1 className="text-3xl font-semibold text-white sm:text-4xl">Exercícios</h1>
             <p className="mt-1 text-slate-400">Academia e atividades aeróbicas</p>
           </header>
 
@@ -249,24 +249,24 @@ export default function ExerciciosPage() {
             <div className="space-y-4">
 
               {/* Stats row */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 {([
                   { label: 'Sequência atual', value: gymStreak > 0 ? `${gymStreak} dias` : '—', Icon: Flame,   color: gymStreak > 0 ? 'text-orange-400' : 'text-slate-600' },
                   { label: MONTH_PT_FULL[viewDate.getMonth()],  value: `${thisMonthCnt} dias`,   Icon: Dumbbell, color: 'text-rose-400' },
                   { label: MONTH_PT_FULL[(viewDate.getMonth() + 11) % 12], value: `${prevMonthCnt} dias`, Icon: Check, color: 'text-slate-400' },
                 ] as const).map(s => (
-                  <div key={s.label} className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl text-center">
+                  <div key={s.label} className="rounded-3xl border border-white/10 bg-white/5 p-3 text-center backdrop-blur-xl sm:rounded-[2rem] sm:p-5">
                     <s.Icon size={20} className={`mx-auto mb-2 ${s.color}`} />
-                    <p className="text-xl font-bold text-white">{s.value}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{s.label}</p>
+                    <p className="text-base font-bold text-white sm:text-xl">{s.value}</p>
+                    <p className="mt-0.5 text-[11px] leading-tight text-slate-500 sm:text-xs">{s.label}</p>
                   </div>
                 ))}
               </div>
 
               {/* Calendar */}
-              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+              <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-6">
                 {/* Month navigator */}
-                <div className="mb-6 flex items-center justify-between">
+                <div className="mb-6 flex items-center justify-between gap-2">
                   <button
                     onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
                     className="rounded-xl border border-white/10 bg-slate-900/60 p-2 text-slate-300 transition hover:bg-white/10"

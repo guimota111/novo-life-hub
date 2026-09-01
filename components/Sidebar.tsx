@@ -278,7 +278,7 @@ export default function Sidebar() {
           />
 
           {/* Sheet */}
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] shadow-2xl">
+          <div className="absolute bottom-0 left-0 right-0 flex max-h-[90vh] flex-col overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] shadow-2xl">
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="h-1 w-10 rounded-full bg-white/20" />

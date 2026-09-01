@@ -32,7 +32,7 @@ const STYLE: Record<BlockType, { bar: string; text: string; soft: string; Icon: 
 };
 
 const inputCls = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 outline-none focus:border-cyan-500/50 transition';
-const cardCls  = 'rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl';
+const cardCls  = 'rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl sm:p-6';
 
 // Bipe curto nas trocas de bloco. WebAudio para nao carregar arquivo de som.
 function beep() {
@@ -582,7 +582,7 @@ export default function ExpedientePage() {
             </p>
           </div>
         ) : (
-          <div className={`rounded-[1.5rem] border p-6 ${s!.soft}`}>
+          <div className={`rounded-[1.5rem] border p-4 sm:p-6 ${s!.soft}`}>
             <div className="flex items-center gap-2">
               {s && <s.Icon size={16} className={s.text} />}
               <span className={`text-sm font-semibold uppercase tracking-widest ${s!.text}`}>
@@ -593,7 +593,7 @@ export default function ExpedientePage() {
                 : <span className="ml-auto text-[11px] text-slate-500">não confirmado</span>}
             </div>
 
-            <p className="mt-3 font-mono text-6xl font-semibold tabular-nums text-white sm:text-7xl">
+            <p className="mt-3 font-mono text-5xl font-semibold tabular-nums text-white sm:text-7xl">
               {formatElapsed(Math.max(0, current.endAt - now))}
             </p>
             <p className="mt-1 text-sm text-slate-400">
@@ -699,7 +699,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-5 shadow-2xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
