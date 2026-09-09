@@ -44,6 +44,9 @@ export interface HealthLog {
   createdAt: Timestamp | null;
 }
 
+// Treino de academia (exercises, workout_templates, workout_sessions) — ver lib/workouts.ts
+export type { ExerciseDoc, WorkoutTemplateDoc, WorkoutSessionDoc } from './workouts';
+
 export interface ManualLog {
   userId: string;
   category: 'reading' | 'study' | 'movie' | 'water';

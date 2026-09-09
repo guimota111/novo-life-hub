@@ -10,6 +10,7 @@ import {
   computeRecords, checkTrophies, diffTrophies, diffRecords,
   emptyRecords, type Records, type DailyData, type Goals,
 } from '@/lib/achievements';
+import { computePRs, fmtDatePt, fmtKg, loadWorkoutData } from '@/lib/workouts';
 import {
   Trophy, Medal, Crown, Star, Target, Zap, HeartPulse, Droplet, Flame,
   BookOpen, Film, Pill, GraduationCap, Footprints, Sparkles, Brain,
@@ -282,6 +283,9 @@ export default function RecordesPage() {
   // Trophy tooltip opened by tap (touch has no hover) — null means none open
   const [openTrophy, setOpenTrophy] = useState<string | null>(null);
 
+  // Recordes de carga da aba Treinos (maior peso por exercício + 1RM estimado)
+  const [gymPRs, setGymPRs] = useState<{ name: string; weight: number; reps: number; date: string; e1rm: number }[]>([]);
+
   const checkedRef = useRef(false);
 
   useEffect(() => {
@@ -305,6 +309,17 @@ export default function RecordesPage() {
       setLoading(false);
     };
     load();
+    // Treinos de academia carregam à parte — não seguram a página se falhar
+    loadWorkoutData(db, user.uid).then(w => {
+      const names = new Map(w.exercises.map(e => [e.key, e.name]));
+      setGymPRs(
+        Array.from(computePRs(w.sessions).values())
+          .filter(p => p.weight > 0)
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 8)
+          .map(p => ({ name: names.get(p.key) ?? p.key, weight: p.weight, reps: p.reps, date: p.date, e1rm: p.e1rm })),
+      );
+    }).catch(() => {});
   }, [user]);
 
   // Compute live records + trophies from loaded data
@@ -561,6 +576,30 @@ export default function RecordesPage() {
               ))}
             </div>
           </div>
+
+          {/* Recordes de carga (aba Treinos) */}
+          {gymPRs.length > 0 && (
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">
+              <h2 className="mb-1 text-lg font-semibold text-white">Recordes de Carga</h2>
+              <p className="mb-4 text-xs text-slate-500">Maior peso por exercício · 1RM estimado por Epley</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {gymPRs.map(p => (
+                  <div key={p.name} className="flex items-center gap-3 rounded-2xl border border-white/5 bg-slate-900/50 p-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-500/15">
+                      <Dumbbell size={14} className="text-rose-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-white">{p.name}</p>
+                      <p className="text-[11px] text-slate-500">{fmtDatePt(p.date, true)} · 1RM ≈ {fmtKg(Math.round(p.e1rm))}</p>
+                    </div>
+                    <p className="shrink-0 text-base font-bold text-white">
+                      {fmtKg(p.weight)} <span className="text-xs font-normal text-slate-400">× {p.reps}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Trophy gallery */}
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Sidebar from '@/components/Sidebar';
+import TreinosTab from '@/components/TreinosTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import {
@@ -74,7 +75,7 @@ function monthCount(logs: Record<string, boolean>, year: number, month: number):
 
 export default function ExerciciosPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'academia' | 'aerobico'>('academia');
+  const [tab, setTab] = useState<'academia' | 'treinos' | 'aerobico'>('academia');
 
   // ── Academia ──────────────────────────────────────────────────────────────
 
@@ -232,17 +233,24 @@ export default function ExerciciosPage() {
 
           {/* Tab bar */}
           <div className="flex gap-2 rounded-3xl border border-white/10 bg-white/5 p-2 backdrop-blur-xl">
-            {(['academia', 'aerobico'] as const).map(t => (
+            {(['academia', 'treinos', 'aerobico'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`flex-1 rounded-2xl py-2.5 text-sm font-medium transition
                   ${tab === t ? 'bg-tamagochi-500 text-slate-950 shadow-lg' : 'text-slate-400 hover:text-white'}`}
               >
-                {t === 'academia' ? 'Academia' : 'Aeróbico'}
+                {{ academia: 'Academia', treinos: 'Treinos', aerobico: 'Aeróbico' }[t]}
               </button>
             ))}
           </div>
+
+          {/* ── TREINOS ──────────────────────────────────────────────────── */}
+          {tab === 'treinos' && (
+            <TreinosTab
+              onGymDaysChanged={dates => setGymLogs(prev => ({ ...prev, ...Object.fromEntries(dates.map(d => [d, true])) }))}
+            />
+          )}
 
           {/* ── ACADEMIA ─────────────────────────────────────────────────── */}
           {tab === 'academia' && (
