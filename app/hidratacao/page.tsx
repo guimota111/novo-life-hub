@@ -257,7 +257,7 @@ export default function HidratacaoPage() {
       <div className="mx-auto flex min-h-screen w-full gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
 
-        <section className="flex-1 space-y-5">
+        <section className="min-w-0 flex-1 space-y-5">
 
           {/* ── Header + quick-add ── */}
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-glow backdrop-blur-xl">

@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
   LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
-  Footprints, GraduationCap, Menu, Wind,
+  Footprints, GraduationCap, Menu, Wind, Timer,
 } from 'lucide-react';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -25,6 +25,7 @@ const navItems = [
   { label: 'Creatina',          href: '/creatina',   icon: Pill },
   { label: 'Calendário',        href: '/calendario', icon: Calendar },
   { label: 'Recordes',          href: '/recordes',   icon: Trophy },
+  { label: 'Expediente',        href: '/expediente', icon: Timer },
 ];
 
 // Bottom bar shows 4 primary items + Menu button
@@ -40,6 +41,7 @@ const mobileNavGroups = [
   { title: 'Visão geral', hrefs: ['/', '/calendario', '/recordes'] },
   { title: 'Corpo',       hrefs: ['/passos', '/exercicios', '/hidratacao', '/creatina'] },
   { title: 'Mente',       hrefs: ['/leitura', '/estudo', '/filmes', '/meditacao'] },
+  { title: 'Utilitários', hrefs: ['/expediente'] },
 ];
 
 export default function Sidebar() {
@@ -276,7 +278,7 @@ export default function Sidebar() {
           />
 
           {/* Sheet */}
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] shadow-2xl">
+          <div className="absolute bottom-0 left-0 right-0 flex max-h-[90vh] flex-col overflow-y-auto overscroll-contain rounded-t-[2rem] border-t border-white/10 bg-[#0d1b2a] shadow-2xl">
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="h-1 w-10 rounded-full bg-white/20" />

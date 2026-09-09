@@ -10,19 +10,20 @@ import {
   Plus, ChevronLeft, ChevronRight, X, Check, Clock,
   RefreshCw, Trash2, GraduationCap, Settings, AlertTriangle,
 } from 'lucide-react';
+import CalendarHeatmap from '@/components/CalendarHeatmap';
 import StudyTimer, { FinishPayload } from '@/components/StudyTimer';
 
 // ─── Color palette ────────────────────────────────────────────────────────────
 
 const COLORS = [
-  { key: 'cyan',    dot: 'bg-cyan-500',    text: 'text-cyan-300',    ring: 'ring-cyan-500',    cardBg: 'bg-cyan-500/10',    cardBorder: 'border-cyan-500/30' },
-  { key: 'sky',     dot: 'bg-sky-500',     text: 'text-sky-300',     ring: 'ring-sky-500',     cardBg: 'bg-sky-500/10',     cardBorder: 'border-sky-500/30' },
-  { key: 'emerald', dot: 'bg-emerald-500', text: 'text-emerald-300', ring: 'ring-emerald-500', cardBg: 'bg-emerald-500/10', cardBorder: 'border-emerald-500/30' },
-  { key: 'violet',  dot: 'bg-violet-500',  text: 'text-violet-300',  ring: 'ring-violet-500',  cardBg: 'bg-violet-500/10',  cardBorder: 'border-violet-500/30' },
-  { key: 'amber',   dot: 'bg-amber-500',   text: 'text-amber-300',   ring: 'ring-amber-500',   cardBg: 'bg-amber-500/10',   cardBorder: 'border-amber-500/30' },
-  { key: 'rose',    dot: 'bg-rose-500',    text: 'text-rose-300',    ring: 'ring-rose-500',    cardBg: 'bg-rose-500/10',    cardBorder: 'border-rose-500/30' },
-  { key: 'orange',  dot: 'bg-orange-500',  text: 'text-orange-300',  ring: 'ring-orange-500',  cardBg: 'bg-orange-500/10',  cardBorder: 'border-orange-500/30' },
-  { key: 'pink',    dot: 'bg-pink-500',    text: 'text-pink-300',    ring: 'ring-pink-500',    cardBg: 'bg-pink-500/10',    cardBorder: 'border-pink-500/30' },
+  { key: 'cyan',    dot: 'bg-cyan-500',    text: 'text-cyan-300',    ring: 'ring-cyan-500',    cardBg: 'bg-cyan-500/10',    cardBorder: 'border-cyan-500/30',    levels: ['bg-cyan-500/25',    'bg-cyan-500/50',    'bg-cyan-500/75',    'bg-cyan-500/95']    },
+  { key: 'sky',     dot: 'bg-sky-500',     text: 'text-sky-300',     ring: 'ring-sky-500',     cardBg: 'bg-sky-500/10',     cardBorder: 'border-sky-500/30',     levels: ['bg-sky-500/25',     'bg-sky-500/50',     'bg-sky-500/75',     'bg-sky-500/95']     },
+  { key: 'emerald', dot: 'bg-emerald-500', text: 'text-emerald-300', ring: 'ring-emerald-500', cardBg: 'bg-emerald-500/10', cardBorder: 'border-emerald-500/30', levels: ['bg-emerald-500/25', 'bg-emerald-500/50', 'bg-emerald-500/75', 'bg-emerald-500/95'] },
+  { key: 'violet',  dot: 'bg-violet-500',  text: 'text-violet-300',  ring: 'ring-violet-500',  cardBg: 'bg-violet-500/10',  cardBorder: 'border-violet-500/30',  levels: ['bg-violet-500/25',  'bg-violet-500/50',  'bg-violet-500/75',  'bg-violet-500/95']  },
+  { key: 'amber',   dot: 'bg-amber-500',   text: 'text-amber-300',   ring: 'ring-amber-500',   cardBg: 'bg-amber-500/10',   cardBorder: 'border-amber-500/30',   levels: ['bg-amber-500/25',   'bg-amber-500/50',   'bg-amber-500/75',   'bg-amber-500/95']   },
+  { key: 'rose',    dot: 'bg-rose-500',    text: 'text-rose-300',    ring: 'ring-rose-500',    cardBg: 'bg-rose-500/10',    cardBorder: 'border-rose-500/30',    levels: ['bg-rose-500/25',    'bg-rose-500/50',    'bg-rose-500/75',    'bg-rose-500/95']    },
+  { key: 'orange',  dot: 'bg-orange-500',  text: 'text-orange-300',  ring: 'ring-orange-500',  cardBg: 'bg-orange-500/10',  cardBorder: 'border-orange-500/30',  levels: ['bg-orange-500/25',  'bg-orange-500/50',  'bg-orange-500/75',  'bg-orange-500/95']  },
+  { key: 'pink',    dot: 'bg-pink-500',    text: 'text-pink-300',    ring: 'ring-pink-500',    cardBg: 'bg-pink-500/10',    cardBorder: 'border-pink-500/30',    levels: ['bg-pink-500/25',    'bg-pink-500/50',    'bg-pink-500/75',    'bg-pink-500/95']    },
 ] as const;
 
 type ColorKey = typeof COLORS[number]['key'];
@@ -75,12 +76,6 @@ function dateToStr(d: Date) {
 }
 
 function parseDate(s: string) { return new Date(s + 'T12:00:00'); }
-function daysBetween(a: Date, b: Date) {
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
-}
-function addDays(d: Date, n: number) {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
 function fmtDuration(min: number) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -98,34 +93,6 @@ function getTimelineRange(scale: TlScale, tlYear: number, tlMonth: number, allSe
   const dates = allSessions.map(s => parseDate(s.date));
   const earliest = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : now;
   return { start: earliest, end: now };
-}
-
-function getXTicks(start: Date, end: Date, scale: TlScale): { label: string; pct: number }[] {
-  const total = daysBetween(start, end) || 1;
-  const ticks: { label: string; pct: number }[] = [];
-  if (scale === 'month') {
-    for (let d = new Date(start); d <= end; d = addDays(d, 5))
-      ticks.push({ label: String(d.getDate()), pct: daysBetween(start, d) / total * 100 });
-  } else if (scale === 'quarter') {
-    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cur <= end) {
-      ticks.push({ label: MONTHS_SHORT[cur.getMonth()], pct: daysBetween(start, cur) / total * 100 });
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-    }
-  } else if (scale === 'year') {
-    for (let m = 0; m < 12; m++) {
-      const d = new Date(start.getFullYear(), m, 1);
-      if (d >= start && d <= end)
-        ticks.push({ label: MONTHS_SHORT[m], pct: daysBetween(start, d) / total * 100 });
-    }
-  } else {
-    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (cur <= end) {
-      ticks.push({ label: `${MONTHS_SHORT[cur.getMonth()]} ${String(cur.getFullYear()).slice(2)}`, pct: daysBetween(start, cur) / total * 100 });
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
-    }
-  }
-  return ticks.filter(t => t.pct >= 0 && t.pct <= 100);
 }
 
 function periodDates(view: StatView): { start: string; end: string } {
@@ -149,7 +116,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/60"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-6 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/10 bg-[#0d1b2a] p-5 shadow-2xl sm:p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="text-slate-400 transition hover:text-white"><X size={18} /></button>
@@ -253,16 +220,12 @@ export default function EstudoPage() {
     () => getTimelineRange(tlScale, tlYear, tlMonth, sessions),
     [tlScale, tlYear, tlMonth, sessions]
   );
-  const tlDays  = useMemo(() => Math.max(daysBetween(tlRange.start, tlRange.end), 1), [tlRange]);
-  const tlTicks = useMemo(() => getXTicks(tlRange.start, tlRange.end, tlScale), [tlRange, tlScale]);
 
-  const sessionsInTimeline = useMemo(() => {
-    const startStr = dateToStr(tlRange.start);
-    const endStr   = dateToStr(tlRange.end);
-    return sessions
-      .filter(s => s.date >= startStr && s.date <= endStr)
-      .map(s => ({ session: s, pct: daysBetween(tlRange.start, parseDate(s.date)) / tlDays * 100 }));
-  }, [sessions, tlRange, tlDays]);
+  const sessionsByDate = useMemo(() => {
+    const map: Record<string, StudySession[]> = {};
+    sessions.forEach(s => { (map[s.date] ??= []).push(s); });
+    return map;
+  }, [sessions]);
 
   // area-level stats (all time)
   const areaStats = useMemo(() => {
@@ -570,63 +533,55 @@ export default function EstudoPage() {
             )}
           </div>
 
-          {sessionsInTimeline.length === 0 ? (
+          {!Object.keys(sessionsByDate).some(k => { const d = parseDate(k); return d >= tlRange.start && d <= tlRange.end; }) ? (
             <p className="py-8 text-center text-sm text-slate-600">Nenhuma sessão de estudo neste período.</p>
           ) : (
             <div>
-              {/* X-axis ticks */}
-              <div className="relative mb-2 ml-28 h-5 border-b border-white/5">
-                {tlTicks.map((tick, i) => (
-                  <span key={i} className="absolute -translate-x-1/2 text-[9px] text-slate-600"
-                    style={{ left: `${tick.pct}%`, bottom: 4 }}>
-                    {tick.label}
-                  </span>
-                ))}
-              </div>
-
-              {/* One row per area */}
-              <div className="space-y-1.5" style={{ overflow: 'visible' }}>
-                {areas.map(area => {
-                  const areaSessions = sessionsInTimeline.filter(s => s.session.areaId === area.id);
-                  if (areaSessions.length === 0) return null;
-                  const c = getColor(area.colorKey);
-                  return (
-                    <div key={area.id} className="flex items-center gap-2" style={{ height: 36 }}>
-                      <span className="w-28 shrink-0 text-right text-[11px] text-slate-400 truncate pr-2">
-                        {area.name}
-                      </span>
-                      <div className="relative flex-1" style={{ height: 36, overflow: 'visible' }}>
-                        {areaSessions.map(({ session, pct }) => (
-                          <div key={session.id}
-                            className="group/dot absolute"
-                            style={{ left: `${pct}%`, top: '50%', transform: 'translate(-50%, -50%)' }}>
-                            <button
-                              className={`block h-3.5 w-3.5 rounded-full border-2 border-white/20 ${c.dot} opacity-70 hover:opacity-100 hover:scale-125 transition`}
-                              onClick={() => { setSelectedSessionId(session.id); setModal('sessionDetail'); }}
-                            />
-                            {/* Tooltip */}
-                            <div className="pointer-events-none absolute z-30 opacity-0 group-hover/dot:opacity-100 transition-opacity"
-                              style={{ bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 6 }}>
-                              <div className="rounded-lg border border-white/10 bg-slate-800 px-2.5 py-1.5 shadow-xl" style={{ minWidth: 140 }}>
-                                <p className={`text-center text-[10px] font-semibold ${c.text} whitespace-nowrap`}>{area.name}</p>
-                                {session.subArea && <p className="text-center text-[9px] text-slate-400">{session.subArea}</p>}
-                                <p className="text-center text-[9px] text-white">{session.topic}</p>
-                                <p className="text-center text-[9px] text-slate-500">{fmtDuration(session.durationMinutes)}</p>
-                              </div>
-                              <div className="mx-auto h-1.5 w-1.5 -translate-y-px rotate-45 border-b border-r border-white/10 bg-slate-800" />
-                            </div>
-                          </div>
-                        ))}
+              <CalendarHeatmap
+                start={tlRange.start}
+                end={tlRange.end}
+                today={todayStr()}
+                getCell={key => {
+                  const list = sessionsByDate[key];
+                  if (!list || list.length === 0) return null;
+                  const totalMin = list.reduce((sum, s) => sum + s.durationMinutes, 0);
+                  const byArea: Record<string, number> = {};
+                  list.forEach(s => { byArea[s.areaId] = (byArea[s.areaId] ?? 0) + s.durationMinutes; });
+                  const dominantAreaId = Object.entries(byArea).sort((a, b) => b[1] - a[1])[0][0];
+                  const dominant = areas.find(a => a.id === dominantAreaId);
+                  const c = getColor(dominant?.colorKey ?? 'cyan');
+                  const level = totalMin >= 120 ? 4 : totalMin >= 60 ? 3 : totalMin >= 30 ? 2 : 1;
+                  return {
+                    colorClass: c.levels[level - 1],
+                    tooltip: (
+                      <div>
+                        <p className="text-center text-[10px] font-semibold text-white whitespace-nowrap">
+                          {parseDate(key).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                          {' · '}{fmtDuration(totalMin)}
+                        </p>
+                        <div className="mt-1 space-y-0.5">
+                          {list.map(session => {
+                            const a = areas.find(ar => ar.id === session.areaId);
+                            const sc = getColor(a?.colorKey ?? 'cyan');
+                            return (
+                              <button key={session.id}
+                                onClick={() => { setSelectedSessionId(session.id); setModal('sessionDetail'); }}
+                                className={`block w-full max-w-[180px] truncate text-left text-[9px] ${sc.text} hover:brightness-125`}>
+                                {a?.name ?? '?'} · {session.topic} ({fmtDuration(session.durationMinutes)})
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    ),
+                  };
+                }}
+              />
 
               {/* Legend */}
               <div className="mt-4 flex flex-wrap gap-4 border-t border-white/5 pt-4">
                 {areas
-                  .filter(a => sessionsInTimeline.some(s => s.session.areaId === a.id))
+                  .filter(a => Object.values(sessionsByDate).some(list => list.some(s => s.areaId === a.id)))
                   .map(area => {
                     const c = getColor(area.colorKey);
                     return (
@@ -755,8 +710,8 @@ export default function EstudoPage() {
               const c = getColor(area?.colorKey ?? 'cyan');
               return (
                 <div key={session.id}
-                  className="flex items-center gap-3 rounded-2xl border border-white/5 bg-slate-900/30 px-4 py-3">
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${c.dot}`} />
+                  className="flex items-start gap-3 rounded-2xl border border-white/5 bg-slate-900/30 px-3 py-3 sm:items-center sm:px-4">
+                  <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${c.dot} sm:mt-0`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-[10px] font-medium uppercase tracking-wide ${c.text}`}>{area?.name ?? '—'}</span>
@@ -765,9 +720,15 @@ export default function EstudoPage() {
                       )}
                     </div>
                     <p className="text-sm font-medium text-white truncate">{session.topic}</p>
+                    {/* No celular a duração/data não cabem ao lado do tópico */}
+                    <p className="mt-0.5 text-[11px] text-slate-500 sm:hidden">
+                      {fmtDuration(session.durationMinutes)}
+                      {' · '}
+                      {new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right">
+                    <div className="hidden text-right sm:block">
                       <p className="text-xs font-medium text-white">{fmtDuration(session.durationMinutes)}</p>
                       <p className="text-[10px] text-slate-600">
                         {new Date(session.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
@@ -775,12 +736,14 @@ export default function EstudoPage() {
                     </div>
                     <button
                       onClick={() => { setSelectedSessionId(session.id); setModal('sessionDetail'); }}
-                      className="text-slate-700 hover:text-slate-400 transition">
-                      <Clock size={13} />
+                      aria-label="Ver detalhes da sessão"
+                      className="-m-1 p-1 text-slate-700 transition hover:text-slate-400">
+                      <Clock size={15} />
                     </button>
                     <button onClick={() => handleDeleteSession(session.id)}
-                      className="text-slate-700 hover:text-red-400 transition">
-                      <Trash2 size={13} />
+                      aria-label="Apagar sessão"
+                      className="-m-1 p-1 text-slate-700 transition hover:text-red-400">
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
