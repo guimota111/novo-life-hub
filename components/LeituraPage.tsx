@@ -200,6 +200,89 @@ function AuthorSelect({ value, onChange, authors }: {
   );
 }
 
+// ─── BookSearchInput ──────────────────────────────────────────────────────────
+// Campo de nome que sugere edições do Google Books; ao escolher, preenche os demais campos.
+
+interface BookSuggestion { id: string; title: string; authors: string; publisher: string; year: string; pageCount: number | null; thumbUrl: string | null }
+interface BookDetails { title: string; author: string; genres: string[]; totalPages: number | null; coverUrl: string | null }
+
+function BookSearchInput({ value, onChange, onPick }: {
+  value: string;
+  onChange: (v: string) => void;
+  onPick: (d: BookDetails) => void;
+}) {
+  const [open,        setOpen]        = useState(false);
+  const [results,     setResults]     = useState<BookSuggestion[]>([]);
+  const [searching,   setSearching]   = useState(false);
+  const [loadingPick, setLoadingPick] = useState(false);
+  const [picked,      setPicked]      = useState(false);
+
+  useEffect(() => {
+    const q = value.trim();
+    if (picked || q.length < 2) { setResults([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        if (res.ok) setResults((await res.json()).results ?? []);
+      } catch { /* abortado ou offline */ }
+      finally { setSearching(false); }
+    }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [value, picked]);
+
+  async function pick(s: BookSuggestion) {
+    setOpen(false);
+    setPicked(true);
+    onChange(s.title);
+    setLoadingPick(true);
+    try {
+      const res = await fetch(`/api/books/search?id=${encodeURIComponent(s.id)}`);
+      // A busca já traz páginas e capa; usa como reserva se o detalhe vier sem.
+      const d: BookDetails = res.ok
+        ? await res.json()
+        : { title: s.title, author: s.authors, genres: [], totalPages: null, coverUrl: null };
+      onPick({ ...d, totalPages: d.totalPages ?? s.pageCount, coverUrl: d.coverUrl ?? s.thumbUrl });
+    } finally { setLoadingPick(false); }
+  }
+
+  return (
+    <div className="relative">
+      <input
+        className={inputCls}
+        value={value}
+        onChange={e => { onChange(e.target.value); setPicked(false); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Digite para buscar. Ex: O Hobbit"
+      />
+      {(searching || loadingPick) && (
+        <RefreshCw size={13} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-500" />
+      )}
+      {open && results.length > 0 && (
+        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#0d1b2a] py-1 shadow-xl">
+          {results.map(r => (
+            <button key={r.id} type="button"
+              className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-white/5"
+              onMouseDown={() => pick(r)}>
+              {r.thumbUrl
+                ? <img src={r.thumbUrl} alt="" className="h-12 w-8 shrink-0 rounded object-cover" />
+                : <div className="h-12 w-8 shrink-0 rounded bg-slate-800" />}
+              <div className="min-w-0">
+                <p className="truncate text-sm text-slate-200">{r.title}</p>
+                <p className="truncate text-xs text-slate-500">
+                  {[r.authors, r.publisher, r.year].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── BookGenreMultiSelect ─────────────────────────────────────────────────────
 
 function BookGenreMultiSelect({ selected, onChange }: {
@@ -1045,8 +1128,17 @@ export default function LeituraPage() {
         <Modal title="Adicionar Livro" onClose={() => setModal(null)}>
           <div className="space-y-4">
             <Field label="Nome do livro *">
-              <input className={inputCls} value={bkName} onChange={e => setBkName(e.target.value)} placeholder="Ex: O Hobbit" />
+              <BookSearchInput value={bkName} onChange={setBkName} onPick={d => {
+                setBkName(d.title);
+                if (d.author) setBkAuthor(d.author);
+                if (d.genres.length) setBkGenres(d.genres);
+                if (d.totalPages) setBkPages(String(d.totalPages));
+                if (d.coverUrl) setBkCover(d.coverUrl);
+              }} />
             </Field>
+            {bkCover && (
+              <img src={bkCover} alt="" className="mx-auto h-40 rounded-xl object-cover shadow-lg" />
+            )}
             <Field label="Autor">
               <AuthorSelect value={bkAuthor} onChange={setBkAuthor} authors={authorList} />
             </Field>

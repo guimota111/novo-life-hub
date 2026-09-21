@@ -162,6 +162,83 @@ function DirectorSelect({ value, onChange, directors }: {
   );
 }
 
+// ─── MovieSearchInput ─────────────────────────────────────────────────────────
+// Campo de nome que sugere filmes do TMDB; ao escolher, preenche os demais campos.
+
+interface TmdbSuggestion { id: number; title: string; originalTitle: string; year: string; posterUrl: string | null }
+interface TmdbDetails { title: string; director: string; genres: string[]; durationMinutes: number | null; coverUrl: string | null }
+
+function MovieSearchInput({ value, onChange, onPick }: {
+  value: string;
+  onChange: (v: string) => void;
+  onPick: (d: TmdbDetails) => void;
+}) {
+  const [open,        setOpen]        = useState(false);
+  const [results,     setResults]     = useState<TmdbSuggestion[]>([]);
+  const [searching,   setSearching]   = useState(false);
+  const [loadingPick, setLoadingPick] = useState(false);
+  const [picked,      setPicked]      = useState(false);
+
+  useEffect(() => {
+    const q = value.trim();
+    if (picked || q.length < 2) { setResults([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/movies/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        if (res.ok) setResults((await res.json()).results ?? []);
+      } catch { /* abortado ou offline */ }
+      finally { setSearching(false); }
+    }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [value, picked]);
+
+  async function pick(s: TmdbSuggestion) {
+    setOpen(false);
+    setPicked(true);
+    onChange(s.title);
+    setLoadingPick(true);
+    try {
+      const res = await fetch(`/api/movies/search?id=${s.id}`);
+      if (res.ok) onPick(await res.json());
+    } finally { setLoadingPick(false); }
+  }
+
+  return (
+    <div className="relative">
+      <input
+        className={inputCls}
+        value={value}
+        onChange={e => { onChange(e.target.value); setPicked(false); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Digite para buscar. Ex: Interestelar"
+      />
+      {(searching || loadingPick) && (
+        <RefreshCw size={13} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-500" />
+      )}
+      {open && results.length > 0 && (
+        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#0d1b2a] py-1 shadow-xl">
+          {results.map(r => (
+            <button key={r.id} type="button"
+              className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-white/5"
+              onMouseDown={() => pick(r)}>
+              {r.posterUrl
+                ? <img src={r.posterUrl} alt="" className="h-12 w-8 shrink-0 rounded object-cover" />
+                : <div className="h-12 w-8 shrink-0 rounded bg-slate-800" />}
+              <div className="min-w-0">
+                <p className="truncate text-sm text-slate-200">{r.title}{r.year && <span className="text-slate-500"> ({r.year})</span>}</p>
+                {r.originalTitle !== r.title && <p className="truncate text-xs text-slate-500">{r.originalTitle}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── GenreMultiSelect ─────────────────────────────────────────────────────────
 
 function GenreMultiSelect({ selected, onChange }: {
@@ -758,8 +835,17 @@ export default function FilmesPage() {
         <Modal title="Adicionar Filme" onClose={() => setModal(null)}>
           <div className="space-y-4">
             <Field label="Nome do filme *">
-              <input className={inputCls} value={mvName} onChange={e => setMvName(e.target.value)} placeholder="Ex: Interestelar" />
+              <MovieSearchInput value={mvName} onChange={setMvName} onPick={d => {
+                setMvName(d.title);
+                if (d.director) setMvDirector(d.director);
+                if (d.genres.length) setMvGenres(d.genres);
+                if (d.durationMinutes) setMvDuration(String(d.durationMinutes));
+                if (d.coverUrl) setMvCover(d.coverUrl);
+              }} />
             </Field>
+            {mvCover && (
+              <img src={mvCover} alt="" className="mx-auto h-40 rounded-xl object-cover shadow-lg" />
+            )}
             <Field label="Diretor">
               <DirectorSelect value={mvDirector} onChange={setMvDirector} directors={directorList} />
             </Field>

@@ -17,3 +17,11 @@ env:
     secret: VAPID_PRIVATE_KEY
     availability:
       - RUNTIME
+  - variable: TMDB_TOKEN
+    secret: TMDB_TOKEN
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_BOOKS_KEY
+    secret: GOOGLE_BOOKS_KEY
+    availability:
+      - RUNTIME
