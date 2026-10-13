@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { Sparkles } from 'lucide-react';
+import Image from 'next/image';
 import { useState } from 'react';
 
 export default function LoginPage() {
@@ -50,8 +50,8 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-[#08101a] p-4 text-slate-100">
       <div className="w-full max-w-md space-y-8 rounded-[2.5rem] border border-white/10 bg-white/5 p-10 shadow-glow backdrop-blur-xl sm:p-12">
         <div className="flex flex-col items-center text-center">
-          <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-[2rem] bg-gradient-to-br from-tamagochi-300 to-tamagochi-500 shadow-lg">
-            <Sparkles size={36} className="text-slate-950" />
+          <div className="relative mb-6 h-24 w-24 overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[#08101a] shadow-glow">
+            <Image src="/icons/icon-192.png" alt="Mascote Tamagochi Me" fill priority sizes="96px" className="object-cover" />
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Tamagochi Me

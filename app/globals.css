@@ -48,3 +48,74 @@ body {
 .btn-glow {
   @apply inline-flex items-center justify-center rounded-2xl bg-tamagochi-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-glow transition hover:bg-tamagochi-400;
 }
+
+@keyframes mascot-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes mascot-breathe {
+  0%, 100% { transform: scale(0.98) translateY(2px); }
+  50% { transform: scale(1.01) translateY(-1px); }
+}
+
+@keyframes mascot-celebrate {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-7px) rotate(-2deg); }
+  50% { transform: translateY(-2px) rotate(0); }
+  75% { transform: translateY(-7px) rotate(2deg); }
+}
+
+@keyframes mascot-grumble {
+  0%, 82%, 100% { transform: translateX(0) rotate(0); }
+  86% { transform: translateX(-3px) rotate(-1deg); }
+  90% { transform: translateX(3px) rotate(1deg); }
+  94% { transform: translateX(-2px) rotate(-1deg); }
+  98% { transform: translateX(2px) rotate(1deg); }
+}
+
+@keyframes mascot-flex {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.035); }
+  55% { transform: scale(1.035) translateY(-2px); }
+}
+
+@keyframes mascot-sway {
+  0%, 100% { transform: rotate(-0.8deg); transform-origin: 50% 90%; }
+  50% { transform: rotate(0.8deg); transform-origin: 50% 90%; }
+}
+
+.mascot-float {
+  animation: mascot-float 4s ease-in-out infinite;
+}
+
+.mascot-breathe {
+  animation: mascot-breathe 4.8s ease-in-out infinite;
+}
+
+.mascot-celebrate {
+  animation: mascot-celebrate 2.8s ease-in-out infinite;
+}
+
+.mascot-grumble {
+  animation: mascot-grumble 3.5s ease-in-out infinite;
+}
+
+.mascot-flex {
+  animation: mascot-flex 2.6s ease-in-out infinite;
+}
+
+.mascot-sway {
+  animation: mascot-sway 4.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-float,
+  .mascot-breathe,
+  .mascot-celebrate,
+  .mascot-grumble,
+  .mascot-flex,
+  .mascot-sway {
+    animation: none;
+  }
+}

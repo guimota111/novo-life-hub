@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Sidebar from '@/components/Sidebar';
+import TamagochiCompanion from '@/components/TamagochiCompanion';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import {
@@ -818,23 +819,27 @@ export default function Page() {
             <div className="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-glow backdrop-blur-xl sm:p-8">
 
               {/* Progresso geral do dia */}
-              <div className="mb-6 border-b border-white/5 pb-6">
-                <div className="mb-3 flex items-end justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-tamagochi-300">Progresso de hoje</p>
-                    <p className="mt-1 text-sm text-slate-400">{completedToday} de 7 hábitos completos</p>
+              <div className="mb-6 grid gap-5 border-b border-white/5 pb-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-center">
+                <div>
+                  <div className="mb-3 flex items-end justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-tamagochi-300">Progresso de hoje</p>
+                      <p className="mt-1 text-sm text-slate-400">{completedToday} de 7 hábitos completos</p>
+                    </div>
+                    <p className={`text-4xl font-bold ${scoreColor}`}>{overallScore}%</p>
                   </div>
-                  <p className={`text-4xl font-bold ${scoreColor}`}>{overallScore}%</p>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-tamagochi-500 to-emerald-400 transition-all duration-500"
+                      style={{ width: `${overallScore}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 text-right">
+                    <DeltaVs current={overallScore} prev={yesterdayScore} fmtAbs={v => `${v}%`} vs="ontem" />
+                  </div>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-tamagochi-500 to-emerald-400 transition-all duration-500"
-                    style={{ width: `${overallScore}%` }}
-                  />
-                </div>
-                <div className="mt-2 text-right">
-                  <DeltaVs current={overallScore} prev={yesterdayScore} fmtAbs={v => `${v}%`} vs="ontem" />
-                </div>
+
+                <TamagochiCompanion progress={overallScore} completed={completedToday} total={7} />
               </div>
 
               <div className="divide-y divide-white/5">
