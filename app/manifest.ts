@@ -1,6 +1,8 @@
 import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
+  const iconVersion = '20261016-logo2';
+
   return {
     id: '/',
     name: 'Tamagochi Me',
@@ -11,9 +13,14 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#08101a',
     theme_color: '#08101a',
     icons: [
-      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-      { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: `/icons/icon-192.png?v=${iconVersion}`, sizes: '192x192', type: 'image/png' },
+      { src: `/icons/icon-512.png?v=${iconVersion}`, sizes: '512x512', type: 'image/png' },
+      {
+        src: `/icons/icon-maskable-512.png?v=${iconVersion}`,
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
     ],
     shortcuts: [
       { name: 'Registrar água', url: '/?quick=water' },

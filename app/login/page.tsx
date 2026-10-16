@@ -51,7 +51,14 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-8 rounded-[2.5rem] border border-white/10 bg-white/5 p-10 shadow-glow backdrop-blur-xl sm:p-12">
         <div className="flex flex-col items-center text-center">
           <div className="relative mb-6 h-24 w-24 overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[#08101a] shadow-glow">
-            <Image src="/icons/icon-192.png" alt="Mascote Tamagochi Me" fill priority sizes="96px" className="object-cover" />
+            <Image
+              src="/icons/icon-192.png?v=20261016-logo2"
+              alt="Logo Tamagochi Me"
+              fill
+              priority
+              sizes="96px"
+              className="object-cover"
+            />
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Tamagochi Me

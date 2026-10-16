@@ -17,8 +17,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Tamagochi Me';
   const options = {
     body: data.body || '',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    icon: '/icons/icon-192.png?v=20261016-logo2',
+    badge: '/icons/icon-192.png?v=20261016-logo2',
     data: { url: data.url || '/' },
   };
 
