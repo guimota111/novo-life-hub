@@ -722,6 +722,16 @@ export default function Page() {
     };
   }, [today, todayData, monthData, goals]);
 
+  const bestHabitStreak = Math.max(
+    streaks.water.count,
+    streaks.steps.count,
+    streaks.reading.count,
+    streaks.gym.count,
+    streaks.creatine.count,
+    streaks.study.count,
+    streaks.meditation.count
+  );
+
   const yesterdayKey = useMemo(() => {
     const d = new Date(today + 'T12:00:00');
     d.setDate(d.getDate() - 1);
@@ -839,7 +849,20 @@ export default function Page() {
                   </div>
                 </div>
 
-                <TamagochiCompanion progress={overallScore} completed={completedToday} total={7} />
+                <TamagochiCompanion
+                  progress={overallScore}
+                  completed={completedToday}
+                  total={7}
+                  signals={{
+                    waterProgress: pct(todayData.water_ml, goals.water_ml),
+                    readingDone: habitDone.reading,
+                    studyDone: habitDone.study,
+                    meditationDone: habitDone.meditation,
+                    gymDone: habitDone.gym,
+                    stepsDone: habitDone.steps,
+                    bestStreak: bestHabitStreak,
+                  }}
+                />
               </div>
 
               <div className="divide-y divide-white/5">

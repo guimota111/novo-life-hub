@@ -85,6 +85,31 @@ body {
   50% { transform: rotate(0.8deg); transform-origin: 50% 90%; }
 }
 
+@keyframes mascot-yawn {
+  0%, 100% { transform: rotate(-2deg) translateY(2px) scale(0.98); }
+  50% { transform: rotate(1deg) translateY(-2px) scale(1.01); }
+}
+
+@keyframes mascot-wilt {
+  0%, 100% { transform: rotate(-1.5deg) translateY(2px); }
+  50% { transform: rotate(1deg) translateY(0); }
+}
+
+@keyframes mascot-focus {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px) scale(1.012); }
+}
+
+@keyframes mascot-meditate {
+  0%, 100% { transform: translateY(2px) scale(0.985); filter: drop-shadow(0 0 4px rgba(94, 234, 212, 0.25)); }
+  50% { transform: translateY(-4px) scale(1); filter: drop-shadow(0 0 12px rgba(94, 234, 212, 0.45)); }
+}
+
+@keyframes mascot-guardian {
+  0%, 100% { transform: translateY(0) scale(0.99); filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.25)); }
+  50% { transform: translateY(-6px) scale(1.015); filter: drop-shadow(0 0 14px rgba(250, 204, 21, 0.5)); }
+}
+
 .mascot-float {
   animation: mascot-float 4s ease-in-out infinite;
 }
@@ -109,13 +134,38 @@ body {
   animation: mascot-sway 4.5s ease-in-out infinite;
 }
 
+.mascot-yawn {
+  animation: mascot-yawn 5.5s ease-in-out infinite;
+}
+
+.mascot-wilt {
+  animation: mascot-wilt 4.8s ease-in-out infinite;
+}
+
+.mascot-focus {
+  animation: mascot-focus 3.8s ease-in-out infinite;
+}
+
+.mascot-meditate {
+  animation: mascot-meditate 5s ease-in-out infinite;
+}
+
+.mascot-guardian {
+  animation: mascot-guardian 3.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .mascot-float,
   .mascot-breathe,
   .mascot-celebrate,
   .mascot-grumble,
   .mascot-flex,
-  .mascot-sway {
+  .mascot-sway,
+  .mascot-yawn,
+  .mascot-wilt,
+  .mascot-focus,
+  .mascot-meditate,
+  .mascot-guardian {
     animation: none;
   }
 }
