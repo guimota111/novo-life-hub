@@ -168,7 +168,7 @@ function getStage(progress: number, hour: number, signals: CompanionSignals): Co
     };
   }
 
-  if (progress < 90) {
+  if (progress < 82) {
     return {
       name: 'Arvorezinha',
       image: '/mascot/tamagochi-tree.png',
@@ -177,6 +177,18 @@ function getStage(progress: number, hour: number, signals: CompanionSignals): Co
       animation: 'mascot-sway',
       badge: 'Evolução avançada',
       glow: 'from-emerald-300/15 via-lime-400/5 to-amber-300/10',
+    };
+  }
+
+  if (progress < 90) {
+    return {
+      name: 'Florescendo',
+      image: '/mascot/tamagochi-flourishing.png',
+      message: 'Uma flor nasceu! Falta pouco para transformar o dia por completo.',
+      accent: 'text-lime-300',
+      animation: 'mascot-celebrate',
+      badge: 'Evolução avançada',
+      glow: 'from-lime-300/15 via-emerald-400/10 to-amber-300/10',
     };
   }
 

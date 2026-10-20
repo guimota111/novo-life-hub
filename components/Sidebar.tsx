@@ -7,11 +7,12 @@ import { usePathname } from 'next/navigation';
 import {
   Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
   LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
-  Footprints, GraduationCap, Menu, Wind, Timer,
+  Footprints, GraduationCap, Menu, Wind, Timer, Sprout,
 } from 'lucide-react';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/contexts/AuthContext';
+import MascotGalleryModal from '@/components/MascotGalleryModal';
 
 const navItems = [
   { label: 'Dashboard',        href: '/',          icon: Home },
@@ -57,6 +58,7 @@ export default function Sidebar() {
   const [pwError,       setPwError]       = useState('');
   const [uploading,     setUploading]     = useState(false);
   const [photoURL,      setPhotoURL]      = useState(user?.photoURL ?? null);
+  const [mascotGalleryOpen, setMascotGalleryOpen] = useState(false);
 
   // mobile drawer
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -76,11 +78,11 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [menuOpen]);
 
-  // lock body scroll when mobile drawer is open
+  // lock body scroll when an overlay is open
   useEffect(() => {
-    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    document.body.style.overflow = mobileOpen || mascotGalleryOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [mobileOpen]);
+  }, [mobileOpen, mascotGalleryOpen]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -160,6 +162,13 @@ export default function Sidebar() {
                     <Target size={16} className="text-tamagochi-300" />
                     Metas
                   </Link>
+                  <button
+                    onClick={() => { setMenuOpen(false); setMascotGalleryOpen(true); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/10"
+                  >
+                    <Sprout size={16} className="text-tamagochi-300" />
+                    Ver mascotes
+                  </button>
                   <div className="my-1 border-t border-white/10" />
                   <button
                     onClick={() => fileInputRef.current?.click()}
@@ -384,22 +393,31 @@ export default function Sidebar() {
             </div>
 
             {/* Footer actions */}
-            <div className="flex gap-3 border-t border-white/5 px-4 py-3 pb-6">
+            <div className="grid grid-cols-3 gap-2 border-t border-white/5 px-4 py-3 pb-6">
+              <button
+                onClick={() => { setMobileOpen(false); setPasswordMode(false); setMascotGalleryOpen(true); }}
+                className="flex items-center justify-center gap-1.5 rounded-2xl border border-tamagochi-500/20 bg-tamagochi-500/10 py-2.5 text-xs font-medium text-tamagochi-300 transition hover:bg-tamagochi-500/20"
+              >
+                <Sprout size={15} />
+                Mascotes
+              </button>
               <Link href="/metas"
                 onClick={() => setMobileOpen(false)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/10">
-                <Target size={16} />
+                className="flex items-center justify-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 py-2.5 text-xs font-medium text-slate-300 transition hover:bg-white/10">
+                <Target size={15} />
                 Metas
               </Link>
               <button onClick={() => { setMobileOpen(false); logout(); }}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-500/20">
-                <LogOut size={16} />
+                className="flex items-center justify-center gap-1.5 rounded-2xl border border-red-500/20 bg-red-500/10 py-2.5 text-xs font-medium text-red-400 transition hover:bg-red-500/20">
+                <LogOut size={15} />
                 Sair
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <MascotGalleryModal open={mascotGalleryOpen} onClose={() => setMascotGalleryOpen(false)} />
     </>
   );
 }
