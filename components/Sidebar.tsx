@@ -5,12 +5,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
-  Droplet, Film, HeartPulse, Home, Sparkles, BookOpen, Pill,
-  LogOut, Calendar, Trophy, Target, Camera, KeyRound, X, Check,
+  Droplet, Film, HeartPulse, Home, BookOpen, Pill,
+  LogOut, Calendar, Trophy, Target, KeyRound, X, Check,
   Footprints, GraduationCap, Menu, Wind, Timer, Sprout,
 } from 'lucide-react';
-import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import MascotGalleryModal from '@/components/MascotGalleryModal';
 
@@ -56,15 +55,12 @@ export default function Sidebar() {
   const [newPw,         setNewPw]         = useState('');
   const [pwStatus,      setPwStatus]      = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [pwError,       setPwError]       = useState('');
-  const [uploading,     setUploading]     = useState(false);
-  const [photoURL,      setPhotoURL]      = useState(user?.photoURL ?? null);
   const [mascotGalleryOpen, setMascotGalleryOpen] = useState(false);
 
   // mobile drawer
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // close desktop dropdown on outside click
   useEffect(() => {
@@ -83,24 +79,6 @@ export default function Sidebar() {
     document.body.style.overflow = mobileOpen || mascotGalleryOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen, mascotGalleryOpen]);
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    setUploading(true);
-    try {
-      const storage = getStorage();
-      const fileRef = storageRef(storage, `avatars/${user.uid}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
-      await updateProfile(user, { photoURL: url });
-      setPhotoURL(url);
-      setMenuOpen(false);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
 
   const handlePasswordChange = async () => {
     if (!user?.email || !currentPw || !newPw) return;
@@ -131,8 +109,6 @@ export default function Sidebar() {
 
   return (
     <>
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-
       {/* ── Desktop sidebar ──────────────────────────────────────────────── */}
       <aside className="hidden w-[320px] shrink-0 flex-col rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-glow backdrop-blur-xl md:flex">
         <div ref={containerRef} className="relative mb-10 flex items-center gap-4">
@@ -140,11 +116,7 @@ export default function Sidebar() {
             onClick={() => { setMenuOpen((v) => !v); setPasswordMode(false); }}
             className="relative inline-flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300 text-slate-950 shadow-lg transition hover:opacity-90"
           >
-            {photoURL ? (
-              <Image src={photoURL} alt="avatar" fill className="object-cover" />
-            ) : (
-              <Sparkles size={24} />
-            )}
+            <Image src="/icon.png" alt="Ícone do Tamagochi Me" fill sizes="56px" className="object-cover" priority />
           </button>
           <div>
             <p className="text-sm uppercase tracking-[0.35em] text-tamagochi-300">Tamagochi Me</p>
@@ -170,14 +142,6 @@ export default function Sidebar() {
                     Ver mascotes
                   </button>
                   <div className="my-1 border-t border-white/10" />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/10"
-                  >
-                    <Camera size={16} className="text-tamagochi-300" />
-                    {uploading ? 'Enviando…' : 'Alterar foto'}
-                  </button>
                   <button
                     onClick={() => setPasswordMode(true)}
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-200 transition hover:bg-white/10"
@@ -297,23 +261,12 @@ export default function Sidebar() {
             <div className="border-b border-white/5 px-5 py-3">
               <div className="flex items-center gap-3">
                 <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-tamagochi-500 via-tamagochi-400 to-tamagochi-300">
-                  {photoURL
-                    ? <Image src={photoURL} alt="avatar" fill className="object-cover" />
-                    : <Sparkles size={18} className="absolute inset-0 m-auto text-slate-950" />
-                  }
+                  <Image src="/icon.png" alt="Ícone do Tamagochi Me" fill sizes="40px" className="object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{user?.displayName ?? user?.email ?? 'Usuário'}</p>
                   <p className="text-xs text-slate-500 truncate uppercase tracking-widest">Tamagochi Me</p>
                 </div>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  aria-label="Alterar foto"
-                  className="p-2 text-slate-500 transition hover:text-white disabled:opacity-40"
-                >
-                  <Camera size={16} />
-                </button>
                 <button
                   onClick={() => setPasswordMode((v) => !v)}
                   aria-label="Alterar senha"
